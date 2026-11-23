@@ -64,6 +64,10 @@
     },
     "portable": {
       "artifactName": "mixdog-IDE-${version}-portable.exe"
-    }
+    },
+    "electronLanguages": [
+      "ko",
+      "en-US"
+    ]
   }
 }

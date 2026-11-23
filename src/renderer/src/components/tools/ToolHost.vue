@@ -1,26 +1,35 @@
 <script setup lang="ts">
 /**
- * Renders every tool window exactly once and teleports it into the dock it lives in.
- * Moving a tool only moves its DOM (Teleport target change) - nothing is remounted,
- * so the terminal keeps its shell and consoles keep their scroll position.
+ * Renders every tool window once and teleports it into the dock it lives in.
+ * A tool is created the first time it is shown (its code is loaded only then), and
+ * after that kept alive: moving it only moves its DOM (Teleport target change), so the
+ * terminal keeps its shell and consoles keep their scroll position.
  */
+import { defineAsyncComponent, reactive, watchEffect } from 'vue'
 import ProjectTool from './ProjectTool.vue'
-import ServerTool from './ServerTool.vue'
-import ConsoleTool from './ConsoleTool.vue'
-import TerminalTool from './TerminalTool.vue'
-import GitSidebar from '../git/GitSidebar.vue'
-import EventLog from '../EventLog.vue'
-import SearchTool from './SearchTool.vue'
-import BuildToolWindow from './BuildToolWindow.vue'
 import { layout, dockOf, dockGeneration, isToolVisible, type ToolId } from '../../layout'
+
+const ServerTool = defineAsyncComponent(() => import('./ServerTool.vue'))
+const ConsoleTool = defineAsyncComponent(() => import('./ConsoleTool.vue'))
+const TerminalTool = defineAsyncComponent(() => import('./TerminalTool.vue'))
+const GitSidebar = defineAsyncComponent(() => import('../git/GitSidebar.vue'))
+const EventLog = defineAsyncComponent(() => import('../EventLog.vue'))
+const SearchTool = defineAsyncComponent(() => import('./SearchTool.vue'))
+const BuildToolWindow = defineAsyncComponent(() => import('./BuildToolWindow.vue'))
 
 const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1 }) as ToolId[]
 void layout
+
+/** tools that have been shown at least once (never unmounted afterwards) */
+const mounted = reactive<Partial<Record<ToolId, boolean>>>({})
+watchEffect(() => {
+  for (const id of ids) if (!mounted[id] && isToolVisible(id)) mounted[id] = true
+})
 </script>
 
 <template>
   <Teleport v-for="id in ids" :key="`${id}:${dockGeneration()}`" defer :to="`#dock-${dockOf(id)}`">
-    <div v-show="isToolVisible(id)" class="tool-pane" :data-tool="id">
+    <div v-if="mounted[id]" v-show="isToolVisible(id)" class="tool-pane" :data-tool="id">
       <ProjectTool v-if="id === 'project'" />
       <SearchTool v-else-if="id === 'search'" />
       <GitSidebar v-else-if="id === 'git'" />

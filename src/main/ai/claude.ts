@@ -12,7 +12,6 @@ import { join, delimiter } from 'path'
 import { homedir } from 'os'
 import { spawnTerm, writeTerm, killTerm } from '../core/pty'
 import { publish } from '../core/events'
-import { mcpConfig } from './mcp-server'
 import { listSessions } from './sessions'
 import { ctxOf, scopeOf, type WinCtx } from '../core/windows'
 
@@ -53,7 +52,10 @@ export interface ClaudeStartOptions {
 }
 
 /** MCP config for one window: its token makes the IDE tools act on that window's project. */
-function writeMcpConfig(ctx: WinCtx): string {
+async function writeMcpConfig(ctx: WinCtx): Promise<string> {
+  // loaded on demand: keeps the MCP SDK out of the main process until Claude is used
+  const { ensureMcpServer, mcpConfig } = await import('./mcp-server')
+  await ensureMcpServer()
   const dir = join(app.getPath('userData'), 'claude')
   mkdirSync(dir, { recursive: true })
   const file = join(dir, `mcp-mixdog-${ctx.id}.json`)
@@ -63,13 +65,13 @@ function writeMcpConfig(ctx: WinCtx): string {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export function startClaude(o: ClaudeStartOptions, owner: WebContents): void {
+export async function startClaude(o: ClaudeStartOptions, owner: WebContents): Promise<void> {
   const ctx = ctxOf(owner)
   if (!ctx) throw new Error('IDE 창을 찾을 수 없습니다')
   const exe = findClaude()
   if (!exe) throw new Error('Claude Code 를 찾을 수 없습니다')
   if (!UUID.test(o.sessionId) || (o.fromSessionId && !UUID.test(o.fromSessionId))) throw new Error('잘못된 세션 ID')
-  const args = ['--mcp-config', writeMcpConfig(ctx), '--allowedTools', 'mcp__mixdog', '--append-system-prompt', SYSTEM_APPEND]
+  const args = ['--mcp-config', await writeMcpConfig(ctx), '--allowedTools', 'mcp__mixdog', '--append-system-prompt', SYSTEM_APPEND]
   if (o.permissionMode !== 'default') args.push('--permission-mode', o.permissionMode)
   if (o.allowBypass && o.permissionMode !== 'bypassPermissions') args.push('--allow-dangerously-skip-permissions')
   if (o.how === 'new') args.push('--session-id', o.sessionId)
@@ -83,8 +85,8 @@ ipcMain.handle('ai:status', () => {
   const cliPath = findClaude()
   return { available: !!cliPath, cliPath }
 })
-ipcMain.handle('ai:start', (e, o: ClaudeStartOptions) => {
-  startClaude(o, e.sender)
+ipcMain.handle('ai:start', async (e, o: ClaudeStartOptions) => {
+  await startClaude(o, e.sender)
   return true
 })
 ipcMain.handle('ai:stop', (e, termId: string) => killTerm(e.sender, termId))

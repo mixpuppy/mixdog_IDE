@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { onMounted, onBeforeUnmount, watch, defineAsyncComponent, ref } from 'vue'
 import TitleBar from './components/TitleBar.vue'
 import ActivityBar from './components/ActivityBar.vue'
 import EditorArea from './components/EditorArea.vue'
@@ -8,23 +8,27 @@ import ToolHost from './components/tools/ToolHost.vue'
 import DropZones from './components/tools/DropZones.vue'
 import { layout, toggleTool, showTool } from './layout'
 import StatusBar from './components/StatusBar.vue'
-import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
-import RunConfigDialog from './components/RunConfigDialog.vue'
 import Toast from './components/Toast.vue'
-import AiPanel from './components/AiPanel.vue'
-import GitView from './components/git/GitView.vue'
 import UiLayer from './components/UiLayer.vue'
-import GotoPopup from './components/GotoPopup.vue'
 import { goto, openGoto, openFind } from './search'
-import TaskList from './components/TaskList.vue'
 import { tasks } from './tasks'
-import BranchPopup from './components/git/BranchPopup.vue'
 import { branchPopup, toggleBranchPopup } from './git'
 import { ai, sendSelectionToClaude } from './ai'
 import { store, showPanel, setProject, setEditorHidden } from './store'
 import { ide, loadProjectInfo } from './ide'
 import { run } from './commands'
 import { ui } from './ui'
+const BranchPopup = defineAsyncComponent(() => import('./components/git/BranchPopup.vue'))
+const TaskList = defineAsyncComponent(() => import('./components/TaskList.vue'))
+const GotoPopup = defineAsyncComponent(() => import('./components/GotoPopup.vue'))
+const GitView = defineAsyncComponent(() => import('./components/git/GitView.vue'))
+const AiPanel = defineAsyncComponent(() => import('./components/AiPanel.vue'))
+const RunConfigDialog = defineAsyncComponent(() => import('./components/RunConfigDialog.vue'))
+const ProjectSettingsDialog = defineAsyncComponent(() => import('./components/ProjectSettingsDialog.vue'))
+
+/** Claude panel: created the first time it is opened, then kept (its sessions live in it) */
+const aiMounted = ref(ai.visible)
+watch(() => ai.visible, (v) => v && (aiMounted.value = true))
 
 window.api.initialProject().then((p) => p && setProject(p))
 window.api.window.onFocus((f) => (store.windowFocused = f))
@@ -128,7 +132,7 @@ onBeforeUnmount(() => {
         <Dock v-show="layout.open.bottom && layout.docks.bottom.length" pos="bottom" />
       </main>
       <Dock v-show="layout.open.right && layout.docks.right.length && !(store.editorHidden && ai.visible)" pos="right" />
-      <AiPanel v-show="ai.visible" :class="{ fill: store.editorHidden }" />
+      <AiPanel v-if="aiMounted" v-show="ai.visible" :class="{ fill: store.editorHidden }" />
       <ActivityBar v-if="layout.docks.right.length || layout.dragging" side="right" />
       <DropZones v-if="layout.dragging" />
     </div>

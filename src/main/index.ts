@@ -8,7 +8,6 @@ import { syncWebResource } from './tools/tomcat'
 import { killAllTerms, killWindowTerms } from './core/pty'
 import { markOwnWrite, syncWatchers } from './core/watcher'
 import { syncGitWatchers } from './tools/git'
-import { startMcpServer } from './ai/mcp-server'
 import './ai/claude'
 import { sanitizeHostClaudeEnv } from './core/env'
 import { registerWindow, allWindows, ctxOf, windowsFor, runInScope, scopeOf } from './core/windows'
@@ -197,7 +196,6 @@ ipcMain.handle('fs:writeFile', async (e, path: string, content: string) => {
 
 app.whenReady().then(async () => {
   if (removedHostEnv.length) publish('app.env.sanitized', { removed: removedHostEnv.length })
-  await startMcpServer().catch((e) => console.error('MCP server failed', e))
   createWindow(folderArg(process.argv))
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(null)

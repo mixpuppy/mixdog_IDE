@@ -201,8 +201,22 @@ function buildServer(ctx: WinCtx): McpServer {
   return server
 }
 
+let starting: Promise<number> | null = null
+
+/**
+ * Start the server once, on first use (the first Claude session), not at IDE start:
+ * the MCP SDK + zod cost ~40MB of main-process memory that idle windows don't need.
+ */
+export function ensureMcpServer(): Promise<number> {
+  starting ??= startMcpServer().catch((e) => {
+    starting = null
+    throw e
+  })
+  return starting
+}
+
 /** Start the server on a free loopback port. Requests must carry the bearer token. */
-export function startMcpServer(): Promise<number> {
+function startMcpServer(): Promise<number> {
   return new Promise((resolve, reject) => {
     const httpServer = http.createServer(async (req, res) => {
       const ctx = ctxByToken(String(req.headers.authorization ?? '').replace(/^Bearer /, ''))
