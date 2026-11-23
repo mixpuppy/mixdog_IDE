@@ -13,7 +13,8 @@ import { z } from 'zod'
 import { history, publish } from '../core/events'
 import { invokeCommand } from '../core/commands'
 import { ctxByToken, runInScope, scopeOf, type WinCtx } from '../core/windows'
-import { buildProject, startRun, stopAll } from '../actions'
+import { buildProject, startRun, stopAll, checkCompile } from '../actions'
+import { getProblems, formatProblems } from '../tools/problems'
 import { tomcatState } from '../tools/tomcat'
 import * as D from '../tools/db'
 
@@ -59,7 +60,8 @@ function buildServer(ctx: WinCtx): McpServer {
         'Tools of the mixdog IDE the user is working in. Call get_ide_state first to see the open project, active file, ' +
         'cursor/selection and server status, and get_recent_events to see what the user just did (files opened/saved/edited, ' +
         'builds, Tomcat logs). Prefer build_project / run_tomcat over running mvn or catalina yourself: they use the ' +
-        "project's configured JDK and Tomcat and show output in the IDE."
+        "project's configured JDK and Tomcat and show output in the IDE. After editing Java/Kotlin code, call check_compile " +
+        'to verify it compiles and fix the reported problems.'
     }
   )
 
@@ -147,7 +149,44 @@ function buildServer(ctx: WinCtx): McpServer {
       const p = await project(ctx)
       const ok = await buildProject(p.path, p.name)
       const out = await invokeCommand('console.tail', { which: 'build', lines: ok ? 25 : 120 }, SOURCE, ctx)
-      return { ...text(`${ok ? 'BUILD SUCCESS' : 'BUILD FAILED'}\n\n${out}`), ...(ok ? {} : { isError: true as const }) }
+      const probs = getProblems(p.path)
+      const head = probs.length ? `${formatProblems(probs, p.path)}\n\n` : ''
+      return { ...text(`${ok ? 'BUILD SUCCESS' : 'BUILD FAILED'}\n\n${head}${out}`), ...(ok ? {} : { isError: true as const }) }
+    })
+  )
+
+  server.registerTool(
+    'check_compile',
+    {
+      _meta: ALWAYS,
+      title: '컴파일 검사',
+      description:
+        "Compile only (Maven `compile` / Gradle `classes`) with the project's JDK and return the compiler errors and warnings as `path:line:col: severity: message`. Much faster than build_project: run it after editing Java/Kotlin code to verify it compiles, then fix the reported problems. The result also shows in the user's Problems window and as red underlines in the editor.",
+      annotations: { readOnlyHint: false }
+    },
+    act(ctx, 'check_compile', async () => {
+      const p = await project(ctx)
+      const r = await checkCompile(p.path, p.name)
+      if (!r.ok && !r.problems.some((x) => x.severity === 'error')) {
+        // failed before / outside javac (dependency, plugin...): the console says why
+        const out = await invokeCommand('console.tail', { which: 'build', lines: 80 }, SOURCE, ctx)
+        return { ...text(`COMPILE FAILED (컴파일러 오류가 아닌 빌드 오류)\n\n${out}`), isError: true as const }
+      }
+      return { ...text(`${r.ok ? 'COMPILE OK' : 'COMPILE FAILED'}\n${formatProblems(r.problems, p.path)}`), ...(r.ok ? {} : { isError: true as const }) }
+    })
+  )
+
+  server.registerTool(
+    'get_problems',
+    {
+      _meta: ALWAYS,
+      title: '문제 목록',
+      description: 'Compiler errors and warnings from the last build or compile check of the project (what the Problems window shows). Does not build; use check_compile for a fresh result.',
+      annotations: { readOnlyHint: true }
+    },
+    act(ctx, 'get_problems', async () => {
+      const p = await project(ctx)
+      return text(formatProblems(getProblems(p.path), p.path))
     })
   )
 

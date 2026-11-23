@@ -1,4 +1,5 @@
 /** Maven / Gradle detection and build runner. */
+import { ProblemCollector, setProblems } from './problems'
 import { promises as fs, existsSync } from 'fs'
 import { join, delimiter } from 'path'
 import type { ChildProcess } from 'child_process'
@@ -126,9 +127,12 @@ export async function runBuild(projectDir: string, jdkHome: string | null, goals
   stopped.delete(keyOf(projectDir))
   publish('build.start', { tool: info.tool, exe: info.exe, goals: offline ? `${offlineFlag} ${g}` : g, label: opts.label ?? null, jdkHome, projectDir }, 'system', projectDir)
 
+  // compiler errors / warnings for the Problems window, editor markers and Claude
+  let problems = new ProblemCollector(projectDir)
   const runOnce = (args: string): Promise<{ code: number | null; offlineMiss: boolean }> =>
     new Promise((resolve) => {
       let offlineMiss = false
+      problems = new ProblemCollector(projectDir)
       const child = runCmd(info.exe!, args, {
         cwd: projectDir,
         env: {
@@ -138,6 +142,7 @@ export async function runBuild(projectDir: string, jdkHome: string | null, goals
         },
         onLine: (line, stream) => {
           if (OFFLINE_MISS.test(line)) offlineMiss = true
+          problems.feed(line)
           publish('build.output', { line, stream }, 'system', projectDir)
         },
         onExit: (code) => {
@@ -161,6 +166,11 @@ export async function runBuild(projectDir: string, jdkHome: string | null, goals
       ok = false
       publish('build.output', { line: `[mixdog] ${e instanceof Error ? e.message : String(e)}`, stream: 'err' }, 'system', projectDir)
     }
+  }
+  if (problems.compiled) {
+    const list = problems.result()
+    setProblems(projectDir, list)
+    publish('build.problems', { problems: list, errors: list.filter((p) => p.severity === 'error').length, warnings: list.filter((p) => p.severity === 'warning').length }, 'system', projectDir)
   }
   publish('build.end', { ok, code, ms: Date.now() - started }, 'system', projectDir)
   return ok

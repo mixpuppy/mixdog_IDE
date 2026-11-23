@@ -5,6 +5,7 @@
 import { reactive } from 'vue'
 import type { IdeEvent, ProjectInfo } from './types'
 import { store, showPanel, reloadFromDisk } from './store'
+import { setProblemMarkers, type Problem } from './problems'
 
 export interface ConsoleLine {
   id: number
@@ -25,7 +26,9 @@ export const ide = reactive({
   lastBuild: null as { ok: boolean; ms?: number } | null,
   events: [] as IdeEvent[],
   downloads: {} as Record<string, { pct: number; phase?: string }>,
-  toast: null as { text: string; kind: 'info' | 'error' | 'ok' } | null
+  toast: null as { text: string; kind: 'info' | 'error' | 'ok' } | null,
+  /** compiler errors / warnings of the last compile (Problems window, editor squiggles) */
+  problems: [] as Problem[]
 })
 
 function push(list: ConsoleLine[], text: string, err = false): void {
@@ -43,9 +46,16 @@ export function toast(text: string, kind: 'info' | 'error' | 'ok' = 'info'): voi
 export async function loadProjectInfo(): Promise<void> {
   if (!store.project) {
     ide.info = null
+    setProblems([])
     return
   }
+  void window.api.build.problems(store.project.path).then((l) => setProblems(l as unknown as Problem[]))
   ide.info = (await window.api.project.info(store.project.path, store.project.name)) as unknown as ProjectInfo
+}
+
+export function setProblems(list: Problem[]): void {
+  ide.problems = list
+  setProblemMarkers(list)
 }
 
 export async function saveSettings(): Promise<void> {
@@ -71,7 +81,14 @@ function onEvent(ev: IdeEvent): void {
       ide.building = false
       ide.lastBuild = { ok: !!d.ok, ms: d.ms as number }
       push(ide.buildLines, d.ok ? `✔ 빌드 성공 (${((d.ms as number) / 1000).toFixed(1)}초)` : `✖ 빌드 실패 (exit ${d.code})`, !d.ok)
-      toast(d.ok ? '빌드 성공' : '빌드 실패', d.ok ? 'ok' : 'error')
+      {
+        const errs = ide.problems.filter((p) => p.severity === 'error').length
+        toast(d.ok ? '빌드 성공' : errs ? `빌드 실패 · 컴파일 오류 ${errs}건 (문제 창)` : '빌드 실패', d.ok ? 'ok' : 'error')
+        if (!d.ok && errs) showPanel('problems')
+      }
+      break
+    case 'build.problems':
+      setProblems(d.problems as Problem[])
       break
     case 'tomcat.start':
       ide.tomcat = 'starting'

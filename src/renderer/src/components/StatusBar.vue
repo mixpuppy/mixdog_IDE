@@ -30,6 +30,7 @@ const buildLabel = computed(() => {
   return t === 'maven' ? 'Maven' : t === 'gradle' ? 'Gradle' : null
 })
 const tomcatText: Record<string, string> = { stopped: '', starting: 'Tomcat 시작 중…', running: 'Tomcat 실행 중' }
+const problemErrors = computed(() => ide.problems.filter((p) => p.severity === 'error').length)
 </script>
 
 <template>
@@ -45,7 +46,9 @@ const tomcatText: Record<string, string> = { stopped: '', starting: 'Tomcat 시�
         </template>
         <template v-else>Git 없음</template>
       </span>
-      <span class="item" @click="showPanel('problems')"><Icon name="warning" :size="12" /> 0</span>
+      <span class="item" :class="{ perr: problemErrors }" :title="`컴파일 오류 ${problemErrors}건 · 경고 ${ide.problems.length - problemErrors}건`" @click="showPanel('problems')">
+        <Icon name="warning" :size="12" /> {{ problemErrors || ide.problems.length }}
+      </span>
       <span v-if="ide.tomcat !== 'stopped'" class="item" :class="ide.tomcat" @click="showPanel('tomcat')">
         <span class="dot" /> {{ tomcatText[ide.tomcat] }}
       </span>
@@ -73,6 +76,9 @@ const tomcatText: Record<string, string> = { stopped: '', starting: 'Tomcat 시�
 </template>
 
 <style scoped>
+.item.perr {
+  color: var(--red);
+}
 .status {
   height: var(--statusbar-h);
   flex-shrink: 0;

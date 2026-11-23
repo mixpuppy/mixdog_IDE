@@ -4,7 +4,8 @@ import { publish, history } from './core/events'
 import { getProject, setProject, getTools, setTools, type ProjectSettings } from './core/settings'
 import { listJdks, downloadJdk, detectProjectJava, pickJdk, inspectJdk } from './tools/jdk'
 import { detectBuild, downloadMaven, stopBuild, isBuilding } from './tools/build'
-import { buildProject, startRun, stopAll, runGoals, updateDependencies, listGradleTasks } from './actions'
+import { buildProject, startRun, stopAll, runGoals, updateDependencies, listGradleTasks, checkCompile } from './actions'
+import { getProblems } from './tools/problems'
 import * as G from './tools/git'
 import * as S from './tools/search'
 import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable } from './tools/tomcat'
@@ -105,6 +106,8 @@ handle('build:run', async (path: string, name: string) => buildProject(path, nam
 handle('build:stop', async (path: string) => stopBuild(path))
 handle('build:goals', async (path: string, name: string, goals: string) => runGoals(path, name, goals))
 handle('build:updateDeps', async (path: string, name: string) => updateDependencies(path, name))
+handle('build:check', async (path: string, name: string) => checkCompile(path, name))
+handle('build:problems', async (path: string) => getProblems(path))
 handle('build:gradleTasks', async (path: string, name: string) => listGradleTasks(path, name))
 handle('run:start', async (path: string, name: string, debug: boolean) => {
   await startRun(path, name, debug)

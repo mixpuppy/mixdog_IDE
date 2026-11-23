@@ -55,6 +55,15 @@ npm run dist:dir    # 설치 파일 없이 dist\win-unpacked\ 폴더만 (빠른 
 - **전체 빌드**: 프로젝트 설정의 빌드 목표(기본 `clean package -DskipTests`)를 그대로 실행.
 - **오프라인** (실행 구성 또는 Maven 창의 [오프라인]): 모든 빌드에 `-o` / `--offline` 을 붙여 원격 저장소 확인을 건너뜁니다. 로컬에 없는 의존성 때문에 실패하면 자동으로 한 번 온라인으로 다시 빌드합니다. [의존성 업데이트]는 항상 온라인.
 
+### 컴파일 오류 (문제 창)
+
+언어 서버(LSP) 없이, IDE 가 돌리는 빌드 출력에서 컴파일 오류·경고를 뽑습니다 (Maven javac·Kotlin, Gradle javac·Kotlin). 별도 프로세스가 없어 가볍습니다.
+
+- 빌드·실행 전 빌드·**컴파일 검사**(문제 창의 망치 버튼 = Maven `compile` / Gradle `classes` 만 실행) 결과가 아래 **문제** 창에 파일별로 나오고, 클릭하면 그 줄로 이동합니다.
+- 열린 편집기에 빨간 줄(오류)·노란 줄(경고)로 표시하고, 상태바에 오류 수를 표시합니다. 빌드가 컴파일 오류로 실패하면 문제 창이 열립니다.
+- 컴파일 단계가 실제로 돈 빌드만 목록을 바꿉니다 (의존성 업데이트 같은 목표는 이전 결과 유지). 고친 뒤에는 다음 컴파일 때 사라집니다.
+- Claude 도구: `check_compile`(컴파일만 하고 오류를 `경로:줄:칸: error: 메시지` 로 돌려줌), `get_problems`(마지막 결과). Claude 는 Java 를 고친 뒤 `check_compile` 로 확인하고 오류를 직접 고치도록 안내돼 있습니다. `build_project` 결과에도 오류 목록이 앞에 붙습니다.
+
 IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 설치됩니다 (시스템 JAVA_HOME 은 그대로).
 
 ## 데이터베이스 (인텔리제이 Database 창 방식)
@@ -87,7 +96,7 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - 오른쪽 **Claude** 패널(`Ctrl+Shift+A`)에서 **내 구독으로 로그인된 Claude Code CLI 를 그대로 실행**합니다. IDE 는 Claude 인증 정보에 손대지 않습니다.
 - 권한 모드는 Claude Code 그대로: 패널 안에서 `Shift+Tab` 으로 수동 승인 / 편집 자동 수락 / 계획 / 권한 무시를 실시간 전환.
 - IDE 는 로컬 MCP 서버(`mixdog`, 127.0.0.1 + 무작위 토큰)를 열어 Claude 에 IDE 도구를 줍니다:
-  `get_ide_state`, `get_recent_events`, `get_editor_text`(저장 안 한 내용 포함), `open_file`, `get_console`, `build_project`, `run_tomcat`, `stop_tomcat`, `list_ide_commands`, `run_ide_command`, DB 조회 `db_list_connections`·`db_describe`·`db_query`
+  `get_ide_state`, `get_recent_events`, `get_editor_text`(저장 안 한 내용 포함), `open_file`, `get_console`, `build_project`, `check_compile`, `get_problems`, `run_tomcat`, `stop_tomcat`, `list_ide_commands`, `run_ide_command`, DB 조회 `db_list_connections`·`db_describe`·`db_query`
 - Claude 가 파일을 고치면 열린 탭이 자동으로 새로 고쳐지고(`file.changed` 이벤트), Claude 의 IDE 도구 호출은 이벤트 로그에 `ai:claude` 로 남습니다.
 - **세션**: 패널 위쪽 탭으로 여러 대화를 동시에 실행. [세션 목록]에서 이 프로젝트의 지난 대화(Claude 앱에서 한 대화 포함)를 보고 [열기]로 이어 하거나 [분기]로 복사본에서 새로 시작. 탭 이름 더블클릭 = 이름 바꾸기(`/rename`, Claude 앱에도 반영). 탭을 닫아도 대화는 남음.
 - 에디터에서 `Ctrl+Alt+K` (또는 우클릭 → Claude 에게 보내기): 현재 파일·선택 줄을 `@경로#L10-20` 으로 Claude 입력창에 넣기.
@@ -122,6 +131,7 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 | `src/main/core/settings.ts` | 설정 저장 (`%APPDATA%\mixdog-ide\settings.json`, 프로젝트별 JDK·실행 구성) |
 | `src/main/tools/jdk.ts` | JDK 탐지 · Temurin 다운로드 · pom/gradle 의 Java 버전 감지 |
 | `src/main/tools/build.ts` | Maven / Gradle 탐지 (래퍼 → IDE 관리 → PATH) 와 빌드 실행 |
+| `src/main/tools/problems.ts` · `renderer/src/problems.ts` | 빌드 출력에서 컴파일 오류·경고 추출 / 편집기 빨간 줄(Monaco 마커) |
 | `src/main/tools/deploy.ts` | 실행 전 빠른 빌드 (증분 컴파일 + 바뀐 파일만 exploded 폴더에 복사) |
 | `src/main/tools/tomcat.ts` | Tomcat 탐지 · 다운로드 · 프로젝트별 CATALINA_BASE · 실행/디버그 · JSP 저장 시 반영 |
 | `src/main/tools/db.ts` | DB 연결 (드라이버 지연 로딩, 비밀번호 암호화 저장, 행 제한 조회, 스키마·테이블·컬럼 조회, 읽기 전용 판정) |
@@ -160,4 +170,5 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - [x] 데이터베이스 1차: Oracle·MariaDB·MySQL·SQL Server·PostgreSQL 연결, 스키마 트리, 쿼리 콘솔(Ctrl+Enter), 결과 표, 읽기 전용 연결, Claude 조회 도구
 - [x] 데이터베이스 2차: SQL 자동완성(테이블·컬럼·별칭), SQL 생성, 결과 표에서 바로 수정·저장, 자동/수동 커밋
 - [ ] 데이터베이스 3차: 내보내기(CSV·엑셀), 실행 계획, SSH 터널, 테이블 DDL 보기
-- [ ] 6단계: LSP (Java: jdtls, Vue: vue-language-server, JSP)
+- [x] 컴파일 오류: 빌드 출력 → 문제 창·편집기 빨간 줄·상태바, Claude `check_compile` / `get_problems`
+- [ ] (보류) LSP: Claude 가 코드를 고치는 방식이라 무게 대비 이득이 적어 보류. 필요해지면 가벼운 Ctrl+클릭 이동(텍스트 기반)부터

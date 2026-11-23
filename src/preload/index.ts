@@ -71,7 +71,9 @@ const api = {
     goals: (path: string, name: string, goals: string) => invoke<boolean>('build:goals', path, name, goals),
     /** re-resolve dependencies, checking remote repositories for updates */
     updateDeps: (path: string, name: string) => invoke<boolean>('build:updateDeps', path, name),
-    gradleTasks: (path: string, name: string) => invoke<string>('build:gradleTasks', path, name)
+    gradleTasks: (path: string, name: string) => invoke<string>('build:gradleTasks', path, name),
+    check: (path: string, name: string) => invoke<{ ok: boolean; problems: Obj[] }>('build:check', path, name),
+    problems: (path: string) => invoke<Obj[]>('build:problems', path)
   },
   run: {
     start: (path: string, name: string, debug: boolean) => invoke<boolean>('run:start', path, name, debug),

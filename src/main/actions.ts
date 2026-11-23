@@ -6,6 +6,7 @@ import { getProject } from './core/settings'
 import { detectBuild, runBuild, stopBuild, gradleTasks } from './tools/build'
 import { startTomcat, stopTomcat, checkRunConfig } from './tools/tomcat'
 import { fastBuild } from './tools/deploy'
+import { getProblems, type Problem } from './tools/problems'
 
 export async function buildProject(path: string, name: string): Promise<boolean> {
   const s = getProject(path, name)
@@ -29,6 +30,18 @@ export async function updateDependencies(path: string, name: string): Promise<bo
   if (!info.tool) throw new Error('pom.xml 또는 build.gradle 을 찾을 수 없습니다')
   const goals = info.tool === 'maven' ? '-U dependency:resolve dependency:resolve-plugins' : '--refresh-dependencies dependencies'
   return runBuild(path, s.jdkHome, goals)
+}
+
+/**
+ * Compile only (Maven `compile`, Gradle `classes`): the quickest way to learn whether the code
+ * builds. The result also fills the Problems window and the editor markers.
+ */
+export async function checkCompile(path: string, name: string): Promise<{ ok: boolean; problems: Problem[] }> {
+  const s = getProject(path, name)
+  const info = await detectBuild(path)
+  if (!info.tool) throw new Error('pom.xml 또는 build.gradle 을 찾을 수 없습니다')
+  const ok = await runBuild(path, s.jdkHome, info.tool === 'maven' ? 'compile' : 'classes', { offline: s.offline, label: '컴파일 검사' })
+  return { ok, problems: getProblems(path) }
 }
 
 export async function listGradleTasks(path: string, name: string): Promise<string> {

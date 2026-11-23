@@ -17,6 +17,7 @@ const EventLog = defineAsyncComponent(() => import('../EventLog.vue'))
 const SearchTool = defineAsyncComponent(() => import('./SearchTool.vue'))
 const BuildToolWindow = defineAsyncComponent(() => import('./BuildToolWindow.vue'))
 const DatabaseTool = defineAsyncComponent(() => import('../db/DatabaseTool.vue'))
+const ProblemsTool = defineAsyncComponent(() => import('./ProblemsTool.vue'))
 
 const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1, database: 1 }) as ToolId[]
 void layout
@@ -41,7 +42,7 @@ watchEffect(() => {
       <ConsoleTool v-else-if="id === 'tomcat'" which="tomcat" />
       <div v-else-if="id === 'events'" class="pad"><EventLog /></div>
       <TerminalTool v-else-if="id === 'terminal'" />
-      <div v-else-if="id === 'problems'" class="ph">문제 없음</div>
+      <ProblemsTool v-else-if="id === 'problems'" />
     </div>
   </Teleport>
 </template>

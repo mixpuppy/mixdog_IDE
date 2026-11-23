@@ -32,7 +32,9 @@ const SYSTEM_APPEND =
   'The "mixdog" MCP server shows what the user sees and does: call mcp__mixdog__get_ide_state for the active file, cursor, ' +
   'selection and Tomcat status, and mcp__mixdog__get_recent_events for recent activity, whenever the request refers to ' +
   '"this file", "the error", "what I just did" and similar. Use mcp__mixdog__build_project and mcp__mixdog__run_tomcat ' +
-  'to build and run (they use the project JDK and run configuration), and mcp__mixdog__open_file to show the user a location.'
+  'to build and run (they use the project JDK and run configuration), and mcp__mixdog__open_file to show the user a location. ' +
+  'After editing Java/Kotlin code, run mcp__mixdog__check_compile (compile only, returns compiler errors as path:line:col) ' +
+  'and fix what it reports before saying the change is done; mcp__mixdog__get_problems shows the last result without building.'
 
 export interface ClaudeStartOptions {
   /** pty id for this tab, e.g. "claude:<session id>" */
