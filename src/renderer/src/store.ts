@@ -81,7 +81,7 @@ export const store = reactive({
   selectedPath: null as string | null,
   /** what the main area shows: code editor or the Git graph */
   mainView: 'editor' as 'editor' | 'git',
-  dialog: null as null | 'project' | 'run',
+  dialog: null as null | 'project' | 'run' | 'db',
   windowFocused: true,
   maximized: false,
   cursor: { line: 1, col: 1 },

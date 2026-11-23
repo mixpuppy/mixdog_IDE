@@ -8,6 +8,7 @@ import { syncWebResource } from './tools/tomcat'
 import { killAllTerms, killWindowTerms } from './core/pty'
 import { markOwnWrite, syncWatchers } from './core/watcher'
 import { syncGitWatchers } from './tools/git'
+import { disconnectAll } from './tools/db'
 import './ai/claude'
 import { sanitizeHostClaudeEnv } from './core/env'
 import { registerWindow, allWindows, ctxOf, windowsFor, runInScope, scopeOf } from './core/windows'
@@ -202,7 +203,10 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => killAllTerms())
+app.on('before-quit', () => {
+  killAllTerms()
+  void disconnectAll()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

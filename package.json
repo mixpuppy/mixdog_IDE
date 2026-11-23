@@ -18,9 +18,17 @@
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.18",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "mssql": "^12.8.1",
+    "mysql2": "^3.24.6",
+    "oracledb": "^26.0.0",
+    "pg": "^8.23.1",
+    "pg-cursor": "^2.22.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/mssql": "^12.3.0",
+    "@types/pg": "^8.23.1",
+    "@types/pg-cursor": "^2.7.2",
     "@vitejs/plugin-vue": "^5.1.4",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -41,10 +49,18 @@
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.{d.ts,d.mts,d.cts}",
+      "!node_modules/@azure/msal-browser/**",
+      "!node_modules/@azure/*/dist/{browser,esm,react-native,workerd}/**",
+      "!node_modules/@azure/*/{src,types}/**",
+      "!node_modules/oracledb/build/Release/*{darwin,linux}*",
+      "!node_modules/@types/**"
     ],
     "asarUnpack": [
-      "node_modules/@lydell/**"
+      "node_modules/@lydell/**",
+      "node_modules/oracledb/build/**"
     ],
     "win": {
       "icon": "build/icon.png",

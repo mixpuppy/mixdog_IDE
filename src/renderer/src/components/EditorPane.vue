@@ -3,15 +3,23 @@
  * One editor pane (group). Drag a tab onto it: right edge = split right,
  * bottom edge = split down, middle = move the tab into this pane.
  */
-import { ref, computed } from 'vue'
+import { ref, computed, defineAsyncComponent } from 'vue'
 import EditorTabs from './EditorTabs.vue'
 import CodeEditor from './CodeEditor.vue'
 import Welcome from './Welcome.vue'
 import { store, splitTab, splitToGroup, moveTab } from '../store'
 
+// DB parts load only when a .sql file is shown
+const SqlBar = defineAsyncComponent(() => import('./db/SqlBar.vue'))
+const ResultPanel = defineAsyncComponent(() => import('./db/ResultPanel.vue'))
+
 const props = defineProps<{ groupId: number }>()
 const group = computed(() => store.groups.find((g) => g.id === props.groupId))
 const gi = (): number => store.groups.findIndex((g) => g.id === props.groupId)
+const sqlPath = computed(() => {
+  const p = group.value?.activePath
+  return p && /\.sql$/i.test(p) ? p : null
+})
 
 const TAB_TYPE = 'application/x-mixdog-tab'
 const zone = ref<'right' | 'bottom' | 'center' | null>(null)
@@ -64,7 +72,9 @@ const label = computed(() => {
     @drop="drop"
   >
     <EditorTabs v-if="group.tabs.length" :group-id="groupId" />
+    <SqlBar v-if="sqlPath" :key="sqlPath" :path="sqlPath" />
     <CodeEditor v-show="group.tabs.length" :group-id="groupId" />
+    <ResultPanel v-if="sqlPath" :path="sqlPath" />
     <Welcome v-if="!group.tabs.length" />
     <div v-if="store.tabDrag && zone" class="ghost" :class="zone">
       <span v-if="label">{{ label }}</span>

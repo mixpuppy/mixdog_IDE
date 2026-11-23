@@ -57,12 +57,29 @@ npm run dist:dir    # 설치 파일 없이 dist\win-unpacked\ 폴더만 (빠른 
 
 IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 설치됩니다 (시스템 JAVA_HOME 은 그대로).
 
+## 데이터베이스 (인텔리제이 Database 창 방식)
+
+오른쪽 **데이터베이스** 도구 창에서 DB 에 연결하고 쿼리를 실행합니다. Oracle · MariaDB · MySQL · SQL Server · PostgreSQL.
+
+- **+ 새 연결**: 종류·호스트·포트·DB(Oracle 은 서비스 이름 또는 SID)·사용자·비밀번호. 호스트 칸에 JDBC URL 을 붙여넣으면 나머지 칸이 채워집니다. [연결 테스트]로 저장 전에 확인.
+- 비밀번호는 저장하거나(Windows 계정으로 암호화 - Electron safeStorage/DPAPI) 저장하지 않고 연결할 때마다 물어보게 할 수 있습니다.
+- **읽기 전용** 연결은 조회 문(SELECT·WITH·SHOW·DESC·EXPLAIN)만 실행합니다. 운영 DB 에 권장.
+- 트리: 연결 > 스키마 > 테이블·뷰(주석 표시) > 컬럼(타입·NOT NULL·PK·주석). 기본 스키마는 자동으로 펼침.
+- **테이블 더블클릭** = 데이터 보기 (콘솔에 `SELECT * FROM 테이블` 을 넣고 실행).
+- **쿼리 콘솔**: 연결마다 하나씩 있는 `.sql` 파일(`%APPDATA%\mixdog-ide\consoles`), 자동 저장. `Ctrl+Enter` = 커서가 있는 문장 실행(`;` 또는 빈 줄로 구분, Oracle PL/SQL 블록은 `/` 줄까지), 선택 후 `Ctrl+Enter` = 선택한 문장들 실행(결과 탭 여러 개).
+  프로젝트의 다른 `.sql` 파일도 편집기 위 DB 선택에서 연결을 고르면 같은 방법으로 실행됩니다.
+- 결과 표: 한 번에 최대 500행만 가져옵니다 (더 있으면 표시, 큰 테이블도 메모리 그대로). 보이는 행만 그려서 가볍고, 셀 선택·방향키·`Ctrl+C`, 우클릭 → 행/전체 복사(엑셀에 붙여넣기), 열 너비 조절.
+- 실행 중 [중지] = 연결을 닫아 쿼리를 멈춤 (다음 쿼리 때 다시 연결).
+- 드라이버는 순수 JS(mysql2, pg, mssql, oracledb)라 따로 설치할 것이 없고, 처음 연결할 때만 불러옵니다.
+- **Oracle 11g**: 기본(Thin) 방식은 12.1 이상만 됩니다. 11g 서버는 **Oracle Instant Client 19c (64bit)** 를 받아 연결 설정의 Oracle Client 폴더로 지정하고 IDE 를 다시 시작하세요 (19 미만 클라이언트, 예: Oracle XE 11g 에 들어 있는 것은 못 씀).
+- Claude 에는 `db_list_connections`, `db_describe`, `db_query`(조회만, 기본 100행) 도구로 열립니다. 변경 문은 거부되므로 Claude 는 SQL 을 파일로 써 주고 사용자가 실행합니다. 비밀번호를 저장하지 않은 연결은 사용자가 먼저 연결해야 씁니다.
+
 ## AI (Claude Code) 연동
 
 - 오른쪽 **Claude** 패널(`Ctrl+Shift+A`)에서 **내 구독으로 로그인된 Claude Code CLI 를 그대로 실행**합니다. IDE 는 Claude 인증 정보에 손대지 않습니다.
 - 권한 모드는 Claude Code 그대로: 패널 안에서 `Shift+Tab` 으로 수동 승인 / 편집 자동 수락 / 계획 / 권한 무시를 실시간 전환.
 - IDE 는 로컬 MCP 서버(`mixdog`, 127.0.0.1 + 무작위 토큰)를 열어 Claude 에 IDE 도구를 줍니다:
-  `get_ide_state`, `get_recent_events`, `get_editor_text`(저장 안 한 내용 포함), `open_file`, `get_console`, `build_project`, `run_tomcat`, `stop_tomcat`, `list_ide_commands`, `run_ide_command`
+  `get_ide_state`, `get_recent_events`, `get_editor_text`(저장 안 한 내용 포함), `open_file`, `get_console`, `build_project`, `run_tomcat`, `stop_tomcat`, `list_ide_commands`, `run_ide_command`, DB 조회 `db_list_connections`·`db_describe`·`db_query`
 - Claude 가 파일을 고치면 열린 탭이 자동으로 새로 고쳐지고(`file.changed` 이벤트), Claude 의 IDE 도구 호출은 이벤트 로그에 `ai:claude` 로 남습니다.
 - **세션**: 패널 위쪽 탭으로 여러 대화를 동시에 실행. [세션 목록]에서 이 프로젝트의 지난 대화(Claude 앱에서 한 대화 포함)를 보고 [열기]로 이어 하거나 [분기]로 복사본에서 새로 시작. 탭 이름 더블클릭 = 이름 바꾸기(`/rename`, Claude 앱에도 반영). 탭을 닫아도 대화는 남음.
 - 에디터에서 `Ctrl+Alt+K` (또는 우클릭 → Claude 에게 보내기): 현재 파일·선택 줄을 `@경로#L10-20` 으로 Claude 입력창에 넣기.
@@ -99,6 +116,8 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 | `src/main/tools/build.ts` | Maven / Gradle 탐지 (래퍼 → IDE 관리 → PATH) 와 빌드 실행 |
 | `src/main/tools/deploy.ts` | 실행 전 빠른 빌드 (증분 컴파일 + 바뀐 파일만 exploded 폴더에 복사) |
 | `src/main/tools/tomcat.ts` | Tomcat 탐지 · 다운로드 · 프로젝트별 CATALINA_BASE · 실행/디버그 · JSP 저장 시 반영 |
+| `src/main/tools/db.ts` | DB 연결 (드라이버 지연 로딩, 비밀번호 암호화 저장, 행 제한 조회, 스키마·테이블·컬럼 조회, 읽기 전용 판정) |
+| `src/renderer/src/db.ts` + `components/db/` | 데이터베이스 도구 창, 연결 대화상자, SQL 편집기 막대·문장 나누기(Ctrl+Enter), 결과 표 |
 | `src/main/tools/git.ts` | Git (사용자의 git.exe·인증 그대로) - 상태·로그·브랜치·커밋·원격, `.git` 변경 감시 |
 | `src/renderer/src/git.ts` + `components/git/` | Git 화면: 커밋 그래프 배치, 변경 파일·커밋 박스, 커밋 상세, diff, 브랜치 목록 |
 | `src/main/ipc.ts` | 렌더러용 IPC 핸들러 |
@@ -129,4 +148,6 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - [x] 창 배치: 도구 창(프로젝트·Git·서버·빌드·Tomcat·이벤트·터미널·문제)을 왼쪽/오른쪽/아래로 드래그해 옮기기(위치 기억, 터미널은 옮겨도 그대로), 코드 창 분할(오른쪽·아래, 중첩 분할, 탭 드래그로 분할·이동), Git 변경/스테이지/커밋 칸 크기 조절
 - [x] 5단계: 검색 - 어디서나 찾기(Shift 두 번), 파일·클래스·최근 파일 찾기, 프로젝트에서 찾기·바꾸기 (git ls-files 기반 파일 목록, .gitignore 존중)
 - [x] Maven / Gradle 도구 창 (오른쪽): 라이프사이클·플러그인 목표·프로필·의존성·모듈(Maven), 작업 그룹(Gradle), 더블클릭 실행, 목표 직접 실행(기록), 오프라인·테스트 건너뛰기, 의존성 업데이트(-U / --refresh-dependencies)
+- [x] 데이터베이스 1차: Oracle·MariaDB·MySQL·SQL Server·PostgreSQL 연결, 스키마 트리, 쿼리 콘솔(Ctrl+Enter), 결과 표, 읽기 전용 연결, Claude 조회 도구
+- [ ] 데이터베이스 2차: SQL 자동완성(테이블·컬럼), 결과 표에서 바로 수정, 내보내기(CSV·INSERT), 실행 계획, SSH 터널
 - [ ] 6단계: LSP (Java: jdtls, Vue: vue-language-server, JSP)

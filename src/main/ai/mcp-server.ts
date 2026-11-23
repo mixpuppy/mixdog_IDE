@@ -15,6 +15,7 @@ import { invokeCommand } from '../core/commands'
 import { ctxByToken, runInScope, scopeOf, type WinCtx } from '../core/windows'
 import { buildProject, startRun, stopAll } from '../actions'
 import { tomcatState } from '../tools/tomcat'
+import * as D from '../tools/db'
 
 const SOURCE = 'ai:claude'
 /** Load IDE tools upfront instead of behind Claude Code's tool search - Claude needs them on most turns. */
@@ -196,6 +197,68 @@ function buildServer(ctx: WinCtx): McpServer {
     act(ctx, 'run_ide_command', async ({ id, args }: { id: string; args?: Record<string, unknown> }) =>
       text((await invokeCommand(id, args ?? {}, SOURCE, ctx)) ?? '완료')
     )
+  )
+
+  /* ---- databases (the user's connections from the Database tool window; read-only for Claude) ---- */
+  const conn = (key: string): D.DbConn => {
+    const list = D.listConnections()
+    const c = list.find((x) => x.id === key) ?? list.find((x) => x.name.toLowerCase() === key.toLowerCase())
+    if (!c) throw new Error(`DB 연결 '${key}' 이(가) 없습니다. db_list_connections 로 이름을 확인하세요.`)
+    if (!c.hasPassword && !c.connected) throw new Error(`'${c.name}' 은(는) 비밀번호를 저장하지 않은 연결입니다. 사용자가 IDE 의 데이터베이스 창에서 먼저 연결해야 합니다.`)
+    return c
+  }
+
+  server.registerTool(
+    'db_list_connections',
+    {
+      title: 'DB 연결 목록',
+      description:
+        'Database connections the user set up in the IDE (Oracle, MariaDB/MySQL, SQL Server, PostgreSQL): name, kind, host, database, user, readOnly, connected. Use the name with db_describe / db_query.',
+      annotations: { readOnlyHint: true }
+    },
+    act(ctx, 'db_list_connections', async () =>
+      text(D.listConnections().map(({ id, name, kind, host, port, database, user, readOnly, connected }) => ({ id, name, kind, host, port, database, user, readOnly, connected })))
+    )
+  )
+
+  server.registerTool(
+    'db_describe',
+    {
+      title: 'DB 구조 보기',
+      description:
+        'Schema browser of a DB connection. No schema: list schemas (and the current one). schema only: tables and views with comments. schema + table: columns (type, nullable, primary key, comment).',
+      inputSchema: { connection: z.string().describe('connection name or id'), schema: z.string().optional(), table: z.string().optional() },
+      annotations: { readOnlyHint: true }
+    },
+    act(ctx, 'db_describe', async ({ connection, schema, table }: { connection: string; schema?: string; table?: string }) => {
+      const c = conn(connection)
+      if (!schema) return text(await D.listSchemas(c.id))
+      if (!table) return text(await D.listObjects(c.id, schema))
+      return text(await D.listColumns(c.id, schema, table))
+    })
+  )
+
+  server.registerTool(
+    'db_query',
+    {
+      title: 'DB 조회',
+      description:
+        'Run ONE read-only SQL statement (SELECT / WITH / SHOW / DESCRIBE / EXPLAIN) on a DB connection and get the rows as TSV. ' +
+        'Data-changing statements are refused: write them into a .sql file for the user to run instead. Use the dialect of the connection kind.',
+      inputSchema: {
+        connection: z.string().describe('connection name or id'),
+        sql: z.string(),
+        limit: z.number().int().min(1).max(1000).optional().describe('max rows (default 100)')
+      },
+      annotations: { readOnlyHint: true }
+    },
+    act(ctx, 'db_query', async ({ connection, sql, limit }: { connection: string; sql: string; limit?: number }) => {
+      const c = conn(connection)
+      const r = await D.runQuery(c.id, sql, { limit: limit ?? 100, source: SOURCE, readOnly: true })
+      const cellText = (v: unknown): string => (v === null ? 'NULL' : String(v).replace(/[\t\r\n]+/g, ' '))
+      const body = [r.columns.join('\t'), ...r.rows.map((row) => row.map(cellText).join('\t'))].join('\n')
+      return text(`${r.rows.length} rows${r.more ? ` (more rows exist; only the first ${r.rows.length} returned)` : ''} · ${r.ms}ms\n${body}`)
+    })
   )
 
   return server

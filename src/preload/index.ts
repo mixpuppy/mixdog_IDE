@@ -6,6 +6,12 @@ type Obj = Record<string, unknown>
 const invoke = <T = unknown>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>
 
+async function dbInvoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
+  const r = (await ipcRenderer.invoke(channel, ...args)) as { value?: T; error?: string }
+  if (r && 'error' in r && r.error !== undefined) throw new Error(r.error)
+  return r.value as T
+}
+
 const api = {
   initialProject: (): Promise<{ path: string; name: string } | null> => invoke('app:initialProject'),
   /** open another IDE window (optionally with a project folder) */
@@ -135,6 +141,24 @@ const api = {
     revert: (p: string, hash: string) => invoke('git:revert', p, hash),
     cherryPick: (p: string, hash: string) => invoke('git:cherryPick', p, hash),
     init: (p: string) => invoke('git:init', p)
+  },
+  /** Database connections and queries (errors come back as rejected promises, without an IDE toast) */
+  db: {
+    list: () => dbInvoke<Obj[]>('db:list'),
+    save: (conn: unknown, password: string | null) => dbInvoke<Obj>('db:save', conn, password),
+    delete: (id: string) => dbInvoke('db:delete', id),
+    test: (conn: unknown, password: string | null) => dbInvoke<string>('db:test', conn, password),
+    connect: (id: string, password?: string | null) => dbInvoke<{ version: string; current: string }>('db:connect', id, password),
+    disconnect: (id: string) => dbInvoke('db:disconnect', id),
+    schemas: (id: string) => dbInvoke<{ schemas: string[]; current: string }>('db:schemas', id),
+    objects: (id: string, schema: string) => dbInvoke<Obj[]>('db:objects', id, schema),
+    columns: (id: string, schema: string, table: string) => dbInvoke<Obj[]>('db:columns', id, schema, table),
+    query: (id: string, sql: string, limit?: number, password?: string | null) => dbInvoke<Obj>('db:query', id, sql, limit, password),
+    consolesDir: () => dbInvoke<string>('db:consolesDir'),
+    consoleFile: (id: string) => dbInvoke<string>('db:consoleFile', id),
+    oracleClient: () => dbInvoke<string | null>('db:oracleClient'),
+    setOracleClient: (v: string | null) => dbInvoke('db:setOracleClient', v),
+    pickFolder: (title: string) => dbInvoke<string | null>('db:pickFolder', title)
   },
   openExternal: (url: string) => invoke('shell:openExternal', url)
 }

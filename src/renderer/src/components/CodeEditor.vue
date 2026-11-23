@@ -101,6 +101,12 @@ onMounted(() => {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F4, () => {
     if (group.value?.activePath) closeTab(group.value.activePath, index())
   })
+  // Ctrl+Enter: run the SQL statement under the caret (.sql files); elsewhere Monaco's "insert line below"
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+    const p = group.value?.activePath
+    if (editor && p && /\.sql$/i.test(p)) void import('../db').then((m) => m.runFromEditor(editor!, p))
+    else editor?.trigger('kb', 'editor.action.insertLineAfter', null)
+  })
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR, () => editor?.trigger('kb', 'editor.action.startFindReplaceAction', null))
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyL, () =>
     editor?.trigger('kb', 'editor.action.formatDocument', null)

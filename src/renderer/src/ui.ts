@@ -26,6 +26,8 @@ export const ui = reactive({
     /** undefined = confirm only (no text field) */
     value?: string
     placeholder?: string
+    /** mask the text field (passwords) */
+    password?: boolean
     ok: string
     danger?: boolean
     check?: { label: string; value: boolean }
@@ -46,10 +48,10 @@ export function closeMenu(): void {
 /** Ask for a line of text. Resolves null on cancel. */
 export function promptText(
   title: string,
-  opts: { message?: string; value?: string; placeholder?: string; ok?: string; check?: { label: string; value: boolean } } = {}
+  opts: { message?: string; value?: string; placeholder?: string; ok?: string; password?: boolean; check?: { label: string; value: boolean } } = {}
 ): Promise<{ value: string; checked: boolean } | null> {
   return new Promise((resolve) => {
-    ui.ask = { title, message: opts.message, value: opts.value ?? '', placeholder: opts.placeholder, ok: opts.ok ?? '확인', check: opts.check, resolve }
+    ui.ask = { title, message: opts.message, value: opts.value ?? '', placeholder: opts.placeholder, password: opts.password, ok: opts.ok ?? '확인', check: opts.check, resolve }
   })
 }
 

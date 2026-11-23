@@ -106,6 +106,7 @@ onBeforeUnmount(() => {
       v-if="ui.ask.value !== undefined"
       ref="input"
       v-model="text"
+      :type="ui.ask.password ? 'password' : 'text'"
       class="input wide"
       :placeholder="ui.ask.placeholder"
       spellcheck="false"

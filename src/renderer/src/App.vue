@@ -25,6 +25,7 @@ const GitView = defineAsyncComponent(() => import('./components/git/GitView.vue'
 const AiPanel = defineAsyncComponent(() => import('./components/AiPanel.vue'))
 const RunConfigDialog = defineAsyncComponent(() => import('./components/RunConfigDialog.vue'))
 const ProjectSettingsDialog = defineAsyncComponent(() => import('./components/ProjectSettingsDialog.vue'))
+const ConnectionDialog = defineAsyncComponent(() => import('./components/db/ConnectionDialog.vue'))
 
 /** Claude panel: created the first time it is opened, then kept (its sessions live in it) */
 const aiMounted = ref(ai.visible)
@@ -140,6 +141,7 @@ onBeforeUnmount(() => {
     <StatusBar />
     <ProjectSettingsDialog v-if="store.dialog === 'project' && ide.info" />
     <RunConfigDialog v-if="store.dialog === 'run' && ide.info" />
+    <ConnectionDialog v-if="store.dialog === 'db'" />
     <Toast />
     <BranchPopup v-if="branchPopup.open" />
     <TaskList v-if="tasks.open" />

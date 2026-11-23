@@ -16,8 +16,9 @@ const GitSidebar = defineAsyncComponent(() => import('../git/GitSidebar.vue'))
 const EventLog = defineAsyncComponent(() => import('../EventLog.vue'))
 const SearchTool = defineAsyncComponent(() => import('./SearchTool.vue'))
 const BuildToolWindow = defineAsyncComponent(() => import('./BuildToolWindow.vue'))
+const DatabaseTool = defineAsyncComponent(() => import('../db/DatabaseTool.vue'))
 
-const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1 }) as ToolId[]
+const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1, database: 1 }) as ToolId[]
 void layout
 
 /** tools that have been shown at least once (never unmounted afterwards) */
@@ -35,6 +36,7 @@ watchEffect(() => {
       <GitSidebar v-else-if="id === 'git'" />
       <ServerTool v-else-if="id === 'server'" />
       <BuildToolWindow v-else-if="id === 'buildtool'" />
+      <DatabaseTool v-else-if="id === 'database'" />
       <ConsoleTool v-else-if="id === 'build'" which="build" />
       <ConsoleTool v-else-if="id === 'tomcat'" which="tomcat" />
       <div v-else-if="id === 'events'" class="pad"><EventLog /></div>

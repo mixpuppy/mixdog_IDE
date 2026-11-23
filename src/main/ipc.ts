@@ -10,6 +10,7 @@ import * as S from './tools/search'
 import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable } from './tools/tomcat'
 import { ctxOf, runInScope, scopeOf } from './core/windows'
 import { syncWatchers } from './core/watcher'
+import * as D from './tools/db'
 
 /**
  * Wrap a handler: it runs in the sender window's project scope (so its events reach only that
@@ -156,3 +157,35 @@ handle('git:reset', async (p: string, hash: string, mode: 'soft' | 'mixed' | 'ha
 handle('git:revert', async (p: string, hash: string) => G.revert(p, hash))
 handle('git:cherryPick', async (p: string, hash: string) => G.cherryPick(p, hash))
 handle('git:init', async (p: string) => G.init(p))
+
+/* ---------- Database ---------- */
+/**
+ * DB calls answer { value } / { error } instead of throwing: a failed query (syntax error,
+ * wrong password) is shown in the result panel, not as an IDE error toast.
+ */
+function dbHandle<A extends unknown[], R>(channel: string, fn: (...args: A) => Promise<R>): void {
+  ipcMain.handle(channel, async (e, ...args) =>
+    runInScope(scopeOf(ctxOf(e.sender)), async () => {
+      try {
+        return { value: await fn(...(args as A)) }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    })
+  )
+}
+dbHandle('db:list', async () => D.listConnections())
+dbHandle('db:save', async (conn: D.DbConn, password: string | null) => D.saveConnection(conn, password))
+dbHandle('db:delete', async (id: string) => D.deleteConnection(id))
+dbHandle('db:test', async (conn: D.DbConn, password: string | null) => D.testConnection(conn, password))
+dbHandle('db:connect', async (id: string, password?: string | null) => D.connect(id, password))
+dbHandle('db:disconnect', async (id: string) => D.disconnect(id))
+dbHandle('db:schemas', async (id: string) => D.listSchemas(id))
+dbHandle('db:objects', async (id: string, schema: string) => D.listObjects(id, schema))
+dbHandle('db:columns', async (id: string, schema: string, table: string) => D.listColumns(id, schema, table))
+dbHandle('db:query', async (id: string, sql: string, limit?: number, password?: string | null) => D.runQuery(id, sql, { limit, password }))
+dbHandle('db:consolesDir', async () => D.consolesDir())
+dbHandle('db:consoleFile', async (id: string) => D.consoleFile(id))
+dbHandle('db:oracleClient', async () => D.getOracleClient())
+dbHandle('db:setOracleClient', async (v: string | null) => D.setOracleClient(v))
+dbHandle('db:pickFolder', async (title: string) => browseFolder(title))

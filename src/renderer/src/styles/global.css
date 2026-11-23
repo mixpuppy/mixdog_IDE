@@ -177,3 +177,9 @@ button {
 *:hover::-webkit-scrollbar-thumb {
   background-color: var(--text-faint);
 }
+
+/* SQL statement flashed when it runs (Ctrl+Enter) */
+.sql-running {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 3px;
+}

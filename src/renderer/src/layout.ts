@@ -8,7 +8,7 @@
 import { reactive, watch } from 'vue'
 
 export type DockId = 'left' | 'right' | 'bottom'
-export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems'
+export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'database' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems'
 
 export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string }> = {
   project: { title: '프로젝트', icon: 'folder', hint: 'Alt+1' },
@@ -16,6 +16,7 @@ export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string 
   git: { title: 'Git', icon: 'git', hint: 'Alt+9' },
   server: { title: '서버', icon: 'server' },
   buildtool: { title: 'Maven', icon: 'maven' },
+  database: { title: '데이터베이스', icon: 'database' },
   build: { title: '빌드', icon: 'hammer' },
   tomcat: { title: 'Tomcat', icon: 'server' },
   events: { title: '이벤트', icon: 'pulse' },
@@ -31,7 +32,7 @@ const DEFAULT = {
   docks: {
     left: ['project', 'search', 'git', 'server'] as ToolId[],
     // IntelliJ keeps Maven / Gradle on the right
-    right: ['buildtool'] as ToolId[],
+    right: ['buildtool', 'database'] as ToolId[],
     bottom: ['build', 'tomcat', 'events', 'terminal', 'problems'] as ToolId[]
   },
   active: { left: 'project', right: null, bottom: 'build' } as Record<DockId, ToolId | null>,
