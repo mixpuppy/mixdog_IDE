@@ -47,7 +47,12 @@ const PATHS: Record<string, string> = {
   undo: 'M5.5 3.5 2.8 6.2l2.7 2.7M3 6.2h6.5a3.7 3.7 0 0 1 0 7.4H7',
   save: 'M3 2.5h8l2.5 2.5v8.5H3zM5.5 2.5v3h5v-3M5.5 13.5V9.5h5v4',
   rowAdd: 'M2.5 4h11M2.5 8h6M2.5 12h6M12 9.5v5M9.5 12h5',
-  rowDel: 'M2.5 4h11M2.5 8h6M2.5 12h6M10 10l4 4M14 10l-4 4'
+  rowDel: 'M2.5 4h11M2.5 8h6M2.5 12h6M10 10l4 4M14 10l-4 4',
+  resume: 'M3.5 3v10M7 3.5l6 4.5-6 4.5z',
+  stepOver: 'M2.5 9a5.5 5.5 0 0 1 10.5-2.2M13.5 3.5v3.6H9.9M8 12.2v.1',
+  stepInto: 'M8 2.5v7M5 6.8l3 3 3-3M8 13.2v.1',
+  stepOut: 'M8 10V3M5 5.7l3-3 3 3M8 13.2v.1',
+  mute: 'M8 8m-4.5 0a4.5 4.5 0 1 0 9 0 4.5 4.5 0 1 0-9 0M3 13l10-10'
 }
 </script>
 

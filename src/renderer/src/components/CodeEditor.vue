@@ -7,6 +7,8 @@ import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import { monaco, docs, currentTheme, editorRef, externalReload } from '../monaco'
 import { store, saveActive, closeTab, tabsOf } from '../store'
 import { sendSelectionToClaude } from '../ai'
+import { openMenu } from '../ui'
+import { dbg, canBreak, toggleBreakpoint, bpAt, editCondition, setEnabled, removeBreakpoint, trackEdits, resume, stepOver, stepInto, stepOut } from '../debug'
 
 const props = defineProps<{ groupId: number }>()
 const group = computed(() => store.groups.find((g) => g.id === props.groupId))
@@ -41,6 +43,8 @@ function show(path: string | null): void {
   shownPath = path
   const doc = path ? docs.get(path) : undefined
   editor.setModel(doc?.model ?? null)
+  // breakpoint gutter only for Java / Kotlin
+  editor.updateOptions({ glyphMargin: canBreak(path) })
   if (doc) {
     const v = (path && views.get(path)) ?? doc.viewState
     if (v) editor.restoreViewState(v)
@@ -52,6 +56,8 @@ function show(path: string | null): void {
 }
 
 onMounted(() => {
+  // Ctrl+click / F12 (text rules in the main process, loaded with the first editor)
+  void import('../navigation').then((m) => m.registerNavigation())
   editor = monaco.editor.create(host.value!, {
     model: null,
     theme: currentTheme(),
@@ -108,6 +114,43 @@ onMounted(() => {
     else editor?.trigger('kb', 'editor.action.insertLineAfter', null)
   })
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR, () => editor?.trigger('kb', 'editor.action.startFindReplaceAction', null))
+  // IntelliJ: Ctrl+B = go to declaration (Ctrl+click / F12 also work)
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => editor?.trigger('kb', 'editor.action.revealDefinition', null))
+  // debugger (IntelliJ keys): Ctrl+F8 breakpoint · F9 resume · F8 over · F7 into · Shift+F8 out
+  const paused = editor.createContextKey<boolean>('mixdogDebugPaused', false)
+  watch(
+    () => dbg.paused,
+    (v) => paused.set(v)
+  )
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F8, () => {
+    const pos = editor?.getPosition()
+    if (shownPath && pos && canBreak(shownPath)) toggleBreakpoint(shownPath, pos.lineNumber)
+  })
+  editor.addCommand(monaco.KeyCode.F9, () => resume(), 'mixdogDebugPaused')
+  editor.addCommand(monaco.KeyCode.F8, () => stepOver(), 'mixdogDebugPaused')
+  editor.addCommand(monaco.KeyCode.F7, () => stepInto(), 'mixdogDebugPaused')
+  editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F8, () => stepOut(), 'mixdogDebugPaused')
+  // click in the gutter left of the line numbers: breakpoint · right click: condition / disable / remove
+  const GLYPH = monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+  editor.onMouseDown((e) => {
+    if (e.target.type !== GLYPH || !e.target.position || !shownPath || !canBreak(shownPath)) return
+    if (e.event.rightButton) return
+    toggleBreakpoint(shownPath, e.target.position.lineNumber)
+  })
+  editor.onContextMenu((e) => {
+    if (e.target.type !== GLYPH || !e.target.position || !shownPath || !canBreak(shownPath)) return
+    const path = shownPath
+    const line = e.target.position.lineNumber
+    const bp = bpAt(path, line)
+    e.event.preventDefault()
+    e.event.stopPropagation()
+    openMenu(e.event.browserEvent, [
+      bp ? { label: '중단점 삭제', action: () => removeBreakpoint(bp) } : { label: '중단점 추가', action: () => toggleBreakpoint(path, line) },
+      { label: bp?.condition ? '조건 수정…' : '조건 넣기…', action: () => editCondition(path, line) },
+      ...(bp ? [{ label: bp.enabled ? '사용 안 함' : '사용', action: () => setEnabled(bp, !bp.enabled) }] : [])
+    ])
+  })
+
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyL, () =>
     editor?.trigger('kb', 'editor.action.formatDocument', null)
   )
@@ -128,6 +171,8 @@ onMounted(() => {
   editor.onDidChangeModelContent((e) => {
     if (!shownPath) return
     syncDirty(shownPath)
+    const m = editor?.getModel()
+    if (m && canBreak(shownPath)) trackEdits(m)
     if (externalReload.active) return // disk reload (Claude / git), already logged as file.changed
     // the same model can be shown in two panes: only the focused one reports the typing
     if (!editor?.hasTextFocus()) return

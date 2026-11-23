@@ -108,6 +108,23 @@ const api = {
     sessions: (projectPath: string) => invoke<Obj[]>('ai:sessions', projectPath)
   },
   /** Project search: file list, Find in Path, Replace in Path */
+  /** debugger (JDWP to Tomcat's debug port) */
+  debug: {
+    setBreakpoints: (project: string, list: { path: string; line: number; condition?: string; enabled: boolean }[]) => invoke('debug:setBreakpoints', project, list),
+    state: (project: string) => invoke<{ attached: boolean; paused: boolean }>('debug:state', project),
+    attach: (project: string, port: number) => invoke('debug:attach', project, port),
+    detach: (project: string) => invoke('debug:detach', project),
+    resume: (project: string) => invoke('debug:resume', project),
+    step: (project: string, depth: 0 | 1 | 2) => invoke('debug:step', project, depth),
+    variables: (project: string, frame: string) => invoke<{ vars: Obj[]; note?: string }>('debug:variables', project, frame),
+    children: (project: string, ref: string) => invoke<Obj[]>('debug:children', project, ref),
+    threadFrames: (project: string, thread: string) => invoke<Obj[]>('debug:threadFrames', project, thread)
+  },
+  /** Ctrl+click / F12: declarations of the symbol at an offset (text rules, no language server) */
+  nav: {
+    definition: (project: string, path: string, text: string, offset: number) =>
+      invoke<{ path: string; line: number; col: number }[]>('nav:definition', project, path, text, offset)
+  },
   search: {
     files: (p: string, fresh?: boolean) => invoke<string[]>('search:files', p, fresh),
     find: (p: string, o: unknown) => invoke<Obj>('search:find', p, o),

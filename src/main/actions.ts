@@ -7,6 +7,7 @@ import { detectBuild, runBuild, stopBuild, gradleTasks } from './tools/build'
 import { startTomcat, stopTomcat, checkRunConfig } from './tools/tomcat'
 import { fastBuild } from './tools/deploy'
 import { getProblems, type Problem } from './tools/problems'
+import { attachDebugger, detachDebugger } from './debug/session'
 
 export async function buildProject(path: string, name: string): Promise<boolean> {
   const s = getProject(path, name)
@@ -61,10 +62,13 @@ export async function startRun(path: string, name: string, debug: boolean): Prom
     }
   }
   await startTomcat(path, s.jdkHome, s.run, debug)
+  // debug run: the IDE attaches its debugger to the JDWP port (retries while Tomcat starts)
+  if (debug) void attachDebugger(path, s.run.debugPort)
 }
 
 /** Stop the build and Tomcat of one project (each window has its own). */
 export async function stopAll(path: string): Promise<void> {
+  await detachDebugger(path)
   await stopBuild(path)
   await stopTomcat(path)
 }

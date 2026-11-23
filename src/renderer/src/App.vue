@@ -18,6 +18,7 @@ import { store, showPanel, setProject, setEditorHidden } from './store'
 import { ide, loadProjectInfo } from './ide'
 import { run } from './commands'
 import { ui } from './ui'
+import { dbg, resume, stepOver, stepInto, stepOut } from './debug'
 const BranchPopup = defineAsyncComponent(() => import('./components/git/BranchPopup.vue'))
 const TaskList = defineAsyncComponent(() => import('./components/TaskList.vue'))
 const GotoPopup = defineAsyncComponent(() => import('./components/GotoPopup.vue'))
@@ -68,6 +69,11 @@ const KEYS: { match: (e: KeyboardEvent) => boolean; action: () => unknown }[] = 
   { match: (e) => e.shiftKey && e.key === 'F10', action: () => store.project && run(ide.info?.settings.run.tomcatHome ? 'run.start' : 'settings.run') },
   { match: (e) => e.shiftKey && e.key === 'F9', action: () => store.project && run(ide.info?.settings.run.tomcatHome ? 'run.debug' : 'settings.run') },
   { match: (e) => e.ctrlKey && e.key === 'F2', action: () => run('run.stop') },
+  // debugger (only while stopped at a breakpoint; the editor has the same keys)
+  { match: (e) => dbg.paused && !e.ctrlKey && !e.shiftKey && e.key === 'F9', action: resume },
+  { match: (e) => dbg.paused && !e.ctrlKey && !e.shiftKey && e.key === 'F8', action: stepOver },
+  { match: (e) => dbg.paused && !e.ctrlKey && !e.shiftKey && e.key === 'F7', action: stepInto },
+  { match: (e) => dbg.paused && !e.ctrlKey && e.shiftKey && e.key === 'F8', action: stepOut },
   { match: (e) => e.ctrlKey && e.altKey && e.shiftKey && e.key.toLowerCase() === 's', action: () => store.project && run('settings.project') },
   { match: (e) => e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a', action: () => (ai.visible = !ai.visible) },
   { match: (e) => e.ctrlKey && e.altKey && e.key.toLowerCase() === 'k', action: () => sendSelectionToClaude() },

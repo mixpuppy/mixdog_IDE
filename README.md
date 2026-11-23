@@ -64,6 +64,38 @@ npm run dist:dir    # 설치 파일 없이 dist\win-unpacked\ 폴더만 (빠른 
 - 컴파일 단계가 실제로 돈 빌드만 목록을 바꿉니다 (의존성 업데이트 같은 목표는 이전 결과 유지). 고친 뒤에는 다음 컴파일 때 사라집니다.
 - Claude 도구: `check_compile`(컴파일만 하고 오류를 `경로:줄:칸: error: 메시지` 로 돌려줌), `get_problems`(마지막 결과). Claude 는 Java 를 고친 뒤 `check_compile` 로 확인하고 오류를 직접 고치도록 안내돼 있습니다. `build_project` 결과에도 오류 목록이 앞에 붙습니다.
 
+### 디버거 (IntelliJ 디버그 창 방식)
+
+**Shift+F9** (디버그 실행) 로 Tomcat 을 띄우면 IDE 가 Tomcat 의 디버그 포트(JDWP)에 직접 연결합니다. 언어 서버·추가 프로세스 없이 IDE 안의 작은 클라이언트(`src/main/debug/`)로 동작하고, 디버그할 때만 연결됩니다.
+
+- **중단점**: `.java` 파일 줄 번호 왼쪽(회색 칸)을 클릭하거나 `Ctrl+F8`. 우클릭 → 조건 넣기 / 사용 안 함 / 삭제. 프로젝트별로 기억합니다.
+  빨간 점 = 적용됨, 빈 빨간 원 = 아직 로드되지 않은 클래스(처음 실행될 때 적용), 테두리 점 = 조건 중단점, 회색 = 꺼짐. 빈 줄·주석 줄에 걸면 다음 코드 줄에서 멈춥니다.
+- **조건**: `id == 5`, `name != null`, `user.id > 3`, `name.equals("홍길동")`, `flag` 처럼 변수(·필드) 와 값 비교. 해석할 수 없는 조건은 그냥 멈춥니다.
+- **멈추면**: 아래 **디버그** 창이 열리고 그 줄이 파란색으로 표시됩니다. 왼쪽 = 호출 스택(스레드 선택, 클릭하면 그 위치로 이동, 라이브러리 프레임은 흐리게), 오른쪽 = 변수(`this`, 매개변수, 지역 변수).
+  객체·배열을 펼치면 필드·요소가 나오고, String·숫자 래퍼·BigDecimal·Date·LocalDate(Time)·enum 은 값으로, ArrayList·HashMap·HashSet 은 `size = n` 과 요소로 보여 줍니다. 더블클릭 = 값 복사.
+- **실행 제어**: F9 계속, F8 다음 줄, F7 들어가기(JDK·Spring·MyBatis 등 프레임워크 코드는 건너뜀), Shift+F8 나오기. 디버그 창 툴바의 중단점 목록 / 모두 끄기, 연결 끊기(Tomcat 은 계속 실행), IDE 밖에서 띄운 JVM 에 포트로 연결.
+
+#### 디버거 - 아직 안 된 것 (나중에 할 일)
+
+- [ ] 식 계산(Alt+F8) · 감시 식(Watches): 자바 식 해석 + 메서드 호출(InvokeMethod) 필요
+- [ ] 변수 값 바꾸기 (SetValues)
+- [ ] 코드 수정 후 재시작 없이 반영 (Hot Swap, RedefineClasses)
+- [ ] JSP 안의 중단점 (JSP → 서블릿 줄 번호 매핑, SMAP)
+- [ ] 예외 중단점 (특정 예외가 던져질 때 멈춤), 메서드 중단점
+- [ ] 일시 정지(Pause) 버튼 · 커서까지 실행(Alt+F9) · 프레임 버리기(Drop Frame)
+- [ ] 조건에 메서드 호출·`&&`/`||` 같은 복잡한 식, 로그만 남기고 멈추지 않는 중단점(Logpoint)
+- [ ] `toString()` 결과로 객체 표시 (메서드 호출 필요), 람다·내부 클래스 변수 이름 정리
+- [ ] Gradle / Spring Boot 단독 실행(Tomcat 이 아닌 main) 디버그 실행 구성
+
+### 선언으로 이동 (Ctrl+B · Ctrl+클릭)
+
+LSP 없이 텍스트 규칙으로 찾습니다 (Spring + MyBatis 기준, 백그라운드 프로세스 없음).
+
+- Java: 클래스 이름 → 그 파일 (import → 같은 패키지 → `*` import → 프로젝트 안 같은 이름 순), `변수.메서드()` / `this.` / `Type.CONST` → 변수·필드·파라미터의 타입 클래스에서 메서드·필드 선언(없으면 상위 클래스·인터페이스), 지역 변수 → 선언 줄.
+- MyBatis: 매퍼 인터페이스 메서드 → 인터페이스 선언 + XML 의 `<select|insert|update|delete id>` (둘 다 목록으로). XML 에서 `id="..."` → 인터페이스 메서드, `resultMap` / `refid` → `<resultMap>` / `<sql>` (다른 namespace 포함), `namespace` / `type` / `resultType` 등 `a.b.Class` → 클래스.
+- JSP·properties 등: `a.b.Class` 형태의 이름 → 클래스.
+- 컴파일러만큼 정확하지는 않습니다 (오버로드 구분 없음, 메서드 체인 `a().b()` 의 `b`, 라이브러리 클래스는 못 찾음).
+
 IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 설치됩니다 (시스템 JAVA_HOME 은 그대로).
 
 ## 데이터베이스 (인텔리제이 Database 창 방식)
@@ -115,6 +147,8 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 | 프로젝트 창 / 터미널 | Alt+1 / Alt+F12 |
 | Git 화면 / 커밋 | Alt+9 / Ctrl+Enter (커밋 메시지 칸) |
 | 어디서나 찾기 (파일·클래스·텍스트·동작) | Shift 두 번 (Tab 으로 탭 전환, 텍스트 탭은 코드 내용 + 미리보기, Ctrl+Enter 로 검색 창에 보내기) |
+| 디버그: 중단점 / 계속 / 다음 줄 / 들어가기 / 나오기 | Ctrl+F8 (또는 줄 번호 왼쪽 클릭) / F9 / F8 / F7 / Shift+F8 |
+| 선언으로 이동 | Ctrl+B / Ctrl+클릭 / F12 (Ctrl 누른 채 마우스를 올리면 미리보기, 여러 곳이면 목록) |
 | 파일 찾기 / 클래스 찾기 / 최근 파일 | Ctrl+Shift+N / Ctrl+N / Ctrl+E (`이름:줄번호` 로 바로 이동, 대문자 약어 `uSI` → UserServiceImpl) |
 | 프로젝트에서 찾기 / 바꾸기 | Ctrl+Shift+F / Ctrl+Shift+R (정규식·대소문자·단어 단위·파일 마스크) |
 | 파일 안에서 찾기 / 바꾸기 | Ctrl+F / Ctrl+R |
@@ -132,6 +166,8 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 | `src/main/tools/jdk.ts` | JDK 탐지 · Temurin 다운로드 · pom/gradle 의 Java 버전 감지 |
 | `src/main/tools/build.ts` | Maven / Gradle 탐지 (래퍼 → IDE 관리 → PATH) 와 빌드 실행 |
 | `src/main/tools/problems.ts` · `renderer/src/problems.ts` | 빌드 출력에서 컴파일 오류·경고 추출 / 편집기 빨간 줄(Monaco 마커) |
+| `src/main/debug/jdwp.ts` · `session.ts` · `renderer/src/debug.ts` · `components/tools/DebugTool.vue` | 디버거: JDWP 프로토콜 클라이언트 / 중단점·단계 실행·스택·변수 / 편집기 중단점 표시·실행 줄 / 디버그 창 |
+| `src/main/tools/navigate.ts` · `renderer/src/navigation.ts` | 선언으로 이동 (텍스트 규칙: Java·MyBatis XML) / Monaco Ctrl+클릭·Ctrl+B 연결 |
 | `src/main/tools/deploy.ts` | 실행 전 빠른 빌드 (증분 컴파일 + 바뀐 파일만 exploded 폴더에 복사) |
 | `src/main/tools/tomcat.ts` | Tomcat 탐지 · 다운로드 · 프로젝트별 CATALINA_BASE · 실행/디버그 · JSP 저장 시 반영 |
 | `src/main/tools/db.ts` | DB 연결 (드라이버 지연 로딩, 비밀번호 암호화 저장, 행 제한 조회, 스키마·테이블·컬럼 조회, 읽기 전용 판정) |
@@ -171,4 +207,6 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - [x] 데이터베이스 2차: SQL 자동완성(테이블·컬럼·별칭), SQL 생성, 결과 표에서 바로 수정·저장, 자동/수동 커밋
 - [ ] 데이터베이스 3차: 내보내기(CSV·엑셀), 실행 계획, SSH 터널, 테이블 DDL 보기
 - [x] 컴파일 오류: 빌드 출력 → 문제 창·편집기 빨간 줄·상태바, Claude `check_compile` / `get_problems`
-- [ ] (보류) LSP: Claude 가 코드를 고치는 방식이라 무게 대비 이득이 적어 보류. 필요해지면 가벼운 Ctrl+클릭 이동(텍스트 기반)부터
+- [x] 선언으로 이동: Ctrl+B·Ctrl+클릭 (텍스트 규칙, Java·MyBatis XML)
+- [x] 디버거 1차: Tomcat 디버그 포트 직접 연결(JDWP), 줄 중단점·조건, 스택·변수, F7/F8/Shift+F8/F9 (남은 일은 위 "디버거 - 아직 안 된 것")
+- [ ] (보류) LSP: Claude 가 코드를 고치는 방식이라 무게 대비 이득이 적어 보류

@@ -8,7 +8,7 @@
 import { reactive, watch } from 'vue'
 
 export type DockId = 'left' | 'right' | 'bottom'
-export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'database' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems'
+export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'database' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems' | 'debug'
 
 export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string }> = {
   project: { title: '프로젝트', icon: 'folder', hint: 'Alt+1' },
@@ -21,7 +21,8 @@ export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string 
   tomcat: { title: 'Tomcat', icon: 'server' },
   events: { title: '이벤트', icon: 'pulse' },
   terminal: { title: '터미널', icon: 'terminal', hint: 'Alt+F12' },
-  problems: { title: '문제', icon: 'warning' }
+  problems: { title: '문제', icon: 'warning' },
+  debug: { title: '디버그', icon: 'bug', hint: 'Shift+F9' }
 }
 
 /** titles that depend on the project, e.g. "Maven" / "Gradle" for the build tool window */
@@ -33,7 +34,7 @@ const DEFAULT = {
     left: ['project', 'search', 'git', 'server'] as ToolId[],
     // IntelliJ keeps Maven / Gradle on the right
     right: ['buildtool', 'database'] as ToolId[],
-    bottom: ['build', 'tomcat', 'events', 'terminal', 'problems'] as ToolId[]
+    bottom: ['build', 'tomcat', 'debug', 'events', 'terminal', 'problems'] as ToolId[]
   },
   active: { left: 'project', right: null, bottom: 'build' } as Record<DockId, ToolId | null>,
   open: { left: true, right: false, bottom: false } as Record<DockId, boolean>,

@@ -6,6 +6,8 @@ import { listJdks, downloadJdk, detectProjectJava, pickJdk, inspectJdk } from '.
 import { detectBuild, downloadMaven, stopBuild, isBuilding } from './tools/build'
 import { buildProject, startRun, stopAll, runGoals, updateDependencies, listGradleTasks, checkCompile } from './actions'
 import { getProblems } from './tools/problems'
+import { findDefinition } from './tools/navigate'
+import * as Dbg from './debug/session'
 import * as G from './tools/git'
 import * as S from './tools/search'
 import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable } from './tools/tomcat'
@@ -107,6 +109,16 @@ handle('build:stop', async (path: string) => stopBuild(path))
 handle('build:goals', async (path: string, name: string, goals: string) => runGoals(path, name, goals))
 handle('build:updateDeps', async (path: string, name: string) => updateDependencies(path, name))
 handle('build:check', async (path: string, name: string) => checkCompile(path, name))
+handle('nav:definition', async (project: string, path: string, text: string, offset: number) => findDefinition(project, path, text, offset))
+handle('debug:setBreakpoints', async (project: string, list: Dbg.Breakpoint[]) => Dbg.setBreakpoints(project, list))
+handle('debug:state', async (project: string) => Dbg.debugState(project))
+handle('debug:attach', async (project: string, port: number) => Dbg.attachDebugger(project, port))
+handle('debug:detach', async (project: string) => Dbg.detachDebugger(project))
+handle('debug:resume', async (project: string) => Dbg.resume(project))
+handle('debug:step', async (project: string, depth: 0 | 1 | 2) => Dbg.step(project, depth))
+handle('debug:variables', async (project: string, frame: string) => Dbg.variables(project, frame))
+handle('debug:children', async (project: string, ref: string) => Dbg.children(project, ref))
+handle('debug:threadFrames', async (project: string, thread: string) => Dbg.threadFrames(project, thread))
 handle('build:problems', async (path: string) => getProblems(path))
 handle('build:gradleTasks', async (path: string, name: string) => listGradleTasks(path, name))
 handle('run:start', async (path: string, name: string, debug: boolean) => {

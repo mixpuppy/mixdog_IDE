@@ -18,8 +18,9 @@ const SearchTool = defineAsyncComponent(() => import('./SearchTool.vue'))
 const BuildToolWindow = defineAsyncComponent(() => import('./BuildToolWindow.vue'))
 const DatabaseTool = defineAsyncComponent(() => import('../db/DatabaseTool.vue'))
 const ProblemsTool = defineAsyncComponent(() => import('./ProblemsTool.vue'))
+const DebugTool = defineAsyncComponent(() => import('./DebugTool.vue'))
 
-const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1, database: 1 }) as ToolId[]
+const ids = Object.keys({ project: 1, search: 1, git: 1, server: 1, build: 1, tomcat: 1, events: 1, terminal: 1, problems: 1, buildtool: 1, database: 1, debug: 1 }) as ToolId[]
 void layout
 
 /** tools that have been shown at least once (never unmounted afterwards) */
@@ -43,6 +44,7 @@ watchEffect(() => {
       <div v-else-if="id === 'events'" class="pad"><EventLog /></div>
       <TerminalTool v-else-if="id === 'terminal'" />
       <ProblemsTool v-else-if="id === 'problems'" />
+      <DebugTool v-else-if="id === 'debug'" />
     </div>
   </Teleport>
 </template>

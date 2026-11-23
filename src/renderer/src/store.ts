@@ -7,7 +7,7 @@ function notify(message: string): void {
   window.api.events.emit('error', { message })
 }
 
-export type PanelTab = 'build' | 'tomcat' | 'events' | 'terminal' | 'problems'
+export type PanelTab = 'build' | 'tomcat' | 'events' | 'terminal' | 'problems' | 'debug'
 
 export interface Tab {
   path: string
