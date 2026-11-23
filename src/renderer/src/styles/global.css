@@ -7,8 +7,9 @@
   --font-ui: 'Pretendard', 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-code: 'JetBrains Mono', 'D2Coding', 'Cascadia Code', Consolas, monospace;
 
-  --chrome: rgba(236, 236, 240, 0.72);
-  --chrome-strong: rgba(228, 228, 233, 0.9);
+  /* light: nearly opaque, so Mica's tint (wallpaper colours) can't make the tool areas look greyed out */
+  --chrome: rgba(247, 247, 249, 0.96);
+  --chrome-strong: rgba(240, 240, 244, 0.98);
   --surface: #ffffff;
   --surface-2: #f6f6f8;
   --elevated: #ffffff;
@@ -62,6 +63,24 @@
     --shadow: 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
     --tl-idle: #4a4a4f;
     color-scheme: dark;
+  }
+}
+
+/* no Mica (Windows 10, or Windows 11 before 22H2): solid chrome instead of see-through */
+html.no-mica {
+  --chrome: #f4f4f6;
+  --chrome-strong: #ececf0;
+}
+html.no-mica body {
+  background: #f4f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  html.no-mica {
+    --chrome: #252528;
+    --chrome-strong: #2a2a2e;
+  }
+  html.no-mica body {
+    background: #252528;
   }
 }
 

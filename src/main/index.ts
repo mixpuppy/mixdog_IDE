@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, screen, nativeTheme, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { release } from 'os'
 import { join, basename } from 'path'
 import { promises as fs, statSync } from 'fs'
 import { publish } from './core/events'
@@ -12,6 +13,9 @@ import { disconnectAll } from './tools/db'
 import './ai/claude'
 import { sanitizeHostClaudeEnv } from './core/env'
 import { registerWindow, allWindows, ctxOf, windowsFor, runInScope, scopeOf } from './core/windows'
+
+/** Mica (Windows 11 22H2 = build 22621+); older Windows gets solid colours */
+const MICA = process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 22621 && !process.env.MIXDOG_NO_MICA
 
 // Must run before any child process is spawned.
 const removedHostEnv = sanitizeHostClaudeEnv()
@@ -67,6 +71,9 @@ function openProjectWindow(folder: string): void {
 }
 
 function createWindow(initialProject: string | null): BrowserWindow {
+  // MIXDOG_THEME=light|dark forces the theme (testing the other look without changing Windows settings)
+  const forced = process.env.MIXDOG_THEME
+  if (forced === 'light' || forced === 'dark') nativeTheme.themeSource = forced
   const area = screen.getPrimaryDisplay().workAreaSize
   const others = BrowserWindow.getAllWindows()
   const win = new BrowserWindow({
@@ -79,8 +86,8 @@ function createWindow(initialProject: string | null): BrowserWindow {
     // Hide the native title bar but keep the Windows frame (snap layouts, rounded corners, shadow).
     titleBarStyle: 'hidden',
     // Windows 11 translucent material = macOS-like vibrancy for the sidebar.
-    backgroundMaterial: process.platform === 'win32' ? 'mica' : undefined,
-    backgroundColor: '#00000000',
+    backgroundMaterial: MICA ? 'mica' : undefined,
+    backgroundColor: MICA ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#252528' : '#f4f4f6',
     icon: app.isPackaged ? undefined : join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -95,6 +102,8 @@ function createWindow(initialProject: string | null): BrowserWindow {
     win.setPosition(x + 32, y + 32)
   }
 
+  // without Mica the see-through chrome would show black: the renderer switches to solid colours
+  if (!MICA) win.webContents.on('dom-ready', () => void win.webContents.executeJavaScript("document.documentElement.classList.add('no-mica')"))
   const ctx = registerWindow(win, initialProject)
   const wc = win.webContents
   win.once('ready-to-show', () => win.show())
