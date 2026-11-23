@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- mixdog IDE app icon: a cool mutt in shades with a gold chain, on a sunset gradient -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a3d"/>
+      <stop offset="0.5" stop-color="#ff3d77"/>
+      <stop offset="1" stop-color="#7a2cff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4c58d"/>
+      <stop offset="1" stop-color="#dc9a58"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1033"/>
+      <stop offset="0.55" stop-color="#2b1452"/>
+      <stop offset="1" stop-color="#0b0618"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff5fd2"/>
+      <stop offset="1" stop-color="#4de1ff"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff2a8"/>
+      <stop offset="0.5" stop-color="#ffcc33"/>
+      <stop offset="1" stop-color="#d98e00"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#3a0a52" flood-opacity="0.45"/>
+    </filter>
+    <clipPath id="lensL"><path d="M140 222 H 240 C 244 222, 246 226, 245 230 L 238 266 C 234 286, 218 296, 196 296 C 168 296, 148 284, 142 262 L 136 230 C 135 226, 137 222, 140 222 Z"/></clipPath>
+    <clipPath id="lensR"><path d="M272 222 H 372 C 375 222, 377 226, 376 230 L 370 262 C 364 284, 344 296, 316 296 C 294 296, 278 286, 274 266 L 267 230 C 266 226, 268 222, 272 222 Z"/></clipPath>
+  </defs>
+
+  <!-- background -->
+  <rect x="32" y="32" width="448" height="448" rx="100" fill="url(#bg)"/>
+  <circle cx="256" cy="230" r="210" fill="url(#glow)"/>
+
+  <g filter="url(#shadow)">
+    <!-- ears: left perked up (dark), right flopped over (tan) -->
+    <path d="M150 196 C 128 150, 132 96, 160 70 C 176 86, 196 130, 204 170 Z" fill="#7c4c25"/>
+    <path d="M160 92 C 168 112, 180 140, 188 164 L 170 176 C 160 150, 154 120, 160 92 Z" fill="#b67845" opacity="0.8"/>
+    <path d="M300 140 C 330 112, 388 104, 414 128 C 430 146, 426 196, 404 226 C 396 236, 384 232, 382 220 C 378 196, 366 170, 340 156 Z" fill="#b8773f"/>
+
+    <!-- head -->
+    <path d="M256 128 C 350 128, 392 196, 388 262 C 384 340, 326 392, 256 392 C 186 392, 128 340, 124 262 C 120 196, 162 128, 256 128 Z" fill="url(#fur)"/>
+
+    <!-- fold of the flopped ear lying on the head -->
+    <path d="M300 140 C 330 118, 380 114, 400 136 C 404 150, 396 168, 384 178 C 372 160, 346 146, 316 150 Z" fill="#a8692f"/>
+
+    <!-- brown patch over the left eye area -->
+    <path d="M132 232 C 136 178, 196 150, 236 178 C 250 196, 246 244, 220 262 L 150 270 Z" fill="#9b6634"/>
+
+    <!-- muzzle -->
+    <ellipse cx="256" cy="322" rx="84" ry="58" fill="#fff3e2"/>
+
+    <!-- sunglasses -->
+    <path d="M118 214 H 394 C 400 214, 402 220, 400 226 L 394 236 H 118 L 112 226 C 110 220, 112 214, 118 214 Z" fill="#111018"/>
+    <path d="M140 222 H 240 C 244 222, 246 226, 245 230 L 238 266 C 234 286, 218 296, 196 296 C 168 296, 148 284, 142 262 L 136 230 C 135 226, 137 222, 140 222 Z" fill="url(#lens)" stroke="#111018" stroke-width="8"/>
+    <path d="M272 222 H 372 C 375 222, 377 226, 376 230 L 370 262 C 364 284, 344 296, 316 296 C 294 296, 278 286, 274 266 L 267 230 C 266 226, 268 222, 272 222 Z" fill="url(#lens)" stroke="#111018" stroke-width="8"/>
+    <path d="M244 230 C 252 224, 260 224, 268 230" fill="none" stroke="#111018" stroke-width="10" stroke-linecap="round"/>
+    <!-- lens reflections -->
+    <g clip-path="url(#lensL)">
+      <path d="M150 300 L 214 210 L 236 210 L 172 300 Z" fill="url(#shine)" opacity="0.75"/>
+      <path d="M184 300 L 248 210 L 256 210 L 192 300 Z" fill="url(#shine)" opacity="0.45"/>
+    </g>
+    <g clip-path="url(#lensR)">
+      <path d="M282 300 L 346 210 L 368 210 L 304 300 Z" fill="url(#shine)" opacity="0.75"/>
+      <path d="M316 300 L 380 210 L 388 210 L 324 300 Z" fill="url(#shine)" opacity="0.45"/>
+    </g>
+
+    <!-- nose -->
+    <path d="M228 302 C 228 286, 284 286, 284 302 C 284 318, 264 326, 256 326 C 248 326, 228 318, 228 302 Z" fill="#1d130c"/>
+    <ellipse cx="246" cy="298" rx="9" ry="4.5" fill="#ffffff" opacity="0.5"/>
+
+    <!-- smug grin, tongue out the side -->
+    <path d="M256 326 L 256 336" stroke="#1d130c" stroke-width="6" stroke-linecap="round"/>
+    <path d="M214 330 C 226 352, 246 354, 256 338 C 268 356, 296 352, 314 324" fill="none" stroke="#1d130c" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M276 346 C 278 374, 306 380, 312 356 C 314 346, 310 338, 304 334 C 296 344, 286 348, 276 346 Z" fill="#ff5c7a"/>
+    <path d="M294 352 L 298 370" stroke="#d93a58" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- gold chain + M pendant -->
+    <path d="M150 368 C 196 410, 316 410, 362 368" fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-dasharray="1 17"/>
+    <path d="M150 368 C 196 410, 316 410, 362 368" fill="none" stroke="#b37400" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <rect x="228" y="388" width="56" height="56" rx="14" fill="url(#gold)" stroke="#b37400" stroke-width="4"/>
+    <text x="256" y="429" text-anchor="middle" font-family="Segoe UI Black, Segoe UI, Arial, sans-serif" font-weight="900" font-size="36" fill="#7a4a00">M</text>
+  </g>
+</svg>

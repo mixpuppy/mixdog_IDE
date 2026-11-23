@@ -1,0 +1,179 @@
+/* ------------------------------------------------------------------
+   mixdog IDE - macOS-inspired design tokens
+   Translucent chrome (title bar, activity bar, sidebar) sits on top of
+   Windows 11 Mica; the editor surface is opaque.
+------------------------------------------------------------------- */
+:root {
+  --font-ui: 'Pretendard', 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-code: 'JetBrains Mono', 'D2Coding', 'Cascadia Code', Consolas, monospace;
+
+  --chrome: rgba(236, 236, 240, 0.72);
+  --chrome-strong: rgba(228, 228, 233, 0.9);
+  --surface: #ffffff;
+  --surface-2: #f6f6f8;
+  --elevated: #ffffff;
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.14);
+  --text: #1d1d1f;
+  --text-dim: #6e6e73;
+  --text-faint: #a1a1a6;
+  --hover: rgba(0, 0, 0, 0.055);
+  --active: rgba(0, 0, 0, 0.09);
+  --accent: #007aff;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(0, 122, 255, 0.14);
+  --selection-inactive: rgba(0, 0, 0, 0.08);
+  --green: #28a745;
+  --red: #ff3b30;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+
+  --tl-close: #ff5f57;
+  --tl-min: #febc2e;
+  --tl-max: #28c840;
+  --tl-idle: #d0d0d4;
+
+  --radius: 7px;
+  --titlebar-h: 40px;
+  --statusbar-h: 24px;
+  --activity-w: 46px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chrome: rgba(36, 36, 40, 0.68);
+    --chrome-strong: rgba(40, 40, 44, 0.92);
+    --surface: #1e1e20;
+    --surface-2: #232326;
+    --elevated: #2c2c30;
+    --border: rgba(255, 255, 255, 0.075);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --text: #ececf0;
+    --text-dim: #9b9ba2;
+    --text-faint: #65656c;
+    --hover: rgba(255, 255, 255, 0.06);
+    --active: rgba(255, 255, 255, 0.1);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, 0.22);
+    --selection-inactive: rgba(255, 255, 255, 0.09);
+    --green: #32d74b;
+    --red: #ff453a;
+    --shadow: 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+    --tl-idle: #4a4a4f;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  /* Transparent so Mica shows through the chrome areas. */
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.icon-btn:active {
+  background: var(--active);
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--text);
+  font-weight: 500;
+  transition: background 0.12s;
+}
+.pill-btn:hover {
+  background: var(--hover);
+}
+
+.primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.primary-btn:hover {
+  filter: brightness(1.08);
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Thin macOS-style overlay scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background-color: var(--text-faint);
+}
