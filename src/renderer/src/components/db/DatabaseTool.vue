@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Database tool window (IntelliJ style): connections > schemas > tables / views > columns. */
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import Icon from '../Icon.vue'
 import ToolBar from '../tools/ToolBar.vue'
 import { openMenu } from '../../ui'
@@ -21,9 +21,13 @@ import {
   kindLabel,
   connOf,
   ensureConnected,
+  columnsOf,
+  qualified,
   type DbConn,
-  type DbObject
+  type DbObject,
+  type DbColumn
 } from '../../db'
+import { generate, sqlName, type GenKind } from '../../dbsql'
 
 onMounted(loadConnections)
 
@@ -42,7 +46,13 @@ function connMenu(e: MouseEvent, c: DbConn): void {
   select(c.id)
   openMenu(e, [
     { label: '쿼리 콘솔 열기', action: () => openConsole(c.id) },
-    { label: c.connected ? '연결 끊기' : '연결', action: () => (c.connected ? disconnect(c.id) : ensureConnected(c.id).then((ok) => ok && toggleConn(c.id, true))) },
+    {
+      label: c.connected ? '연결 끊기' : '연결',
+      action: async () => {
+        if (c.connected) await disconnect(c.id)
+        else if (await ensureConnected(c.id)) await toggleConn(c.id, true)
+      }
+    },
     { label: '새로고침', action: () => refresh(c.id), disabled: !c.connected },
     { label: '속성…', sep: true, action: () => editConnection(c.id) },
     { label: '복제', action: () => editConnection(c.id, true) },
@@ -50,14 +60,74 @@ function connMenu(e: MouseEvent, c: DbConn): void {
   ])
 }
 
+/** Generated statement for a table, into the console (or the clipboard for the column list). */
+async function gen(c: DbConn, schema: string, t: DbObject, what: GenKind, only?: string[]): Promise<void> {
+  let cols = await columnsOf(c.id, schema, t.name)
+  if (only?.length) cols = cols.filter((x) => only.includes(x.name))
+  const text = generate(what, c.kind, qualified(c, schema, t.name), cols)
+  if (what === 'columns') copy(text)
+  else void openConsole(c.id, text)
+}
+
 function tableMenu(e: MouseEvent, c: DbConn, schema: string, t: DbObject): void {
   select(`${c.id}/${schema}/${t.name}`)
   openMenu(e, [
     { label: '데이터 보기', action: () => openConsole(c.id, selectSql(c, schema, t.name), true) },
-    { label: 'SELECT 문을 콘솔에 넣기', action: () => openConsole(c.id, selectSql(c, schema, t.name)) },
-    { label: '이름 복사', sep: true, action: () => copy(t.name) },
+    { label: 'SQL 생성 (콘솔에 넣기)', header: true, sep: true },
+    { label: 'SELECT', hint: '컬럼 목록 + PK 조건', action: () => gen(c, schema, t, 'select') },
+    { label: 'INSERT', disabled: t.type === 'view', action: () => gen(c, schema, t, 'insert') },
+    { label: 'UPDATE', disabled: t.type === 'view', hint: 'PK 조건', action: () => gen(c, schema, t, 'update') },
+    { label: 'DELETE', disabled: t.type === 'view', hint: 'PK 조건', action: () => gen(c, schema, t, 'delete') },
+    { label: '컬럼 목록 복사 (쉼표 구분)', sep: true, action: () => gen(c, schema, t, 'columns') },
+    { label: '이름 복사', action: () => copy(t.name) },
     { label: '설명 복사', disabled: !t.comment, action: () => copy(t.comment) }
   ])
+}
+
+/* column multi-select (Ctrl/Shift+click) for "SQL from these columns" */
+const colSel = ref<{ table: string; names: string[] }>({ table: '', names: [] })
+let colAnchor = ''
+
+function clickCol(e: MouseEvent, tkey: string, cols: DbColumn[], col: DbColumn): void {
+  select(`${tkey}/${col.name}`)
+  const cur = colSel.value.table === tkey ? colSel.value.names : []
+  if (e.ctrlKey) {
+    colSel.value = { table: tkey, names: cur.includes(col.name) ? cur.filter((n) => n !== col.name) : [...cur, col.name] }
+  } else if (e.shiftKey && colAnchor && colSel.value.table === tkey) {
+    const a = cols.findIndex((x) => x.name === colAnchor)
+    const b = cols.findIndex((x) => x.name === col.name)
+    colSel.value = { table: tkey, names: cols.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x.name) }
+    return
+  } else colSel.value = { table: tkey, names: [col.name] }
+  colAnchor = col.name
+}
+
+const colOn = (tkey: string, name: string): boolean => colSel.value.table === tkey && colSel.value.names.includes(name)
+
+function colMenu(e: MouseEvent, c: DbConn, schema: string, t: DbObject, cols: DbColumn[], col: DbColumn): void {
+  const tkey = `${c.id}/${schema}/${t.name}`
+  if (!colOn(tkey, col.name)) {
+    colSel.value = { table: tkey, names: [col.name] }
+    colAnchor = col.name
+  }
+  // keep the table's column order
+  const names = cols.map((x) => x.name).filter((n) => colSel.value.names.includes(n))
+  const n = names.length
+  openMenu(e, [
+    { label: `선택한 컬럼 ${n}개로 SQL 생성`, header: true },
+    { label: 'SELECT', action: () => gen(c, schema, t, 'select', names) },
+    { label: 'INSERT', disabled: t.type === 'view', action: () => gen(c, schema, t, 'insert', names) },
+    { label: 'UPDATE', disabled: t.type === 'view', hint: 'PK 조건', action: () => updateWith(c, schema, t, names) },
+    { label: '이름 복사', sep: true, hint: n > 1 ? '쉼표 구분' : undefined, action: () => copy(names.map((x) => sqlName(c.kind, x)).join(', ')) },
+    { label: '설명 복사', disabled: !col.comment, action: () => copy(col.comment) }
+  ])
+}
+
+/** UPDATE of the chosen columns still needs the PK in WHERE */
+async function updateWith(c: DbConn, schema: string, t: DbObject, names: string[]): Promise<void> {
+  const cols = await columnsOf(c.id, schema, t.name)
+  const pick = cols.filter((x) => names.includes(x.name) || x.pk)
+  void openConsole(c.id, generate('update', c.kind, qualified(c, schema, t.name), pick))
 }
 
 function openData(c: DbConn, schema: string, t: DbObject): void {
@@ -158,9 +228,12 @@ function onKey(e: KeyboardEvent): void {
                     v-for="col in nodeOf(`${c.id}/${s}/${t.name}`)?.columns ?? []"
                     :key="col.name"
                     class="row col"
+                    :class="{ sel: colOn(`${c.id}/${s}/${t.name}`, col.name) }"
                     :style="{ paddingLeft: '62px' }"
-                    :title="col.comment || col.name"
+                    :title="(col.comment || col.name) + ' · Ctrl/Shift+클릭으로 여러 개 선택, 우클릭으로 SQL 생성'"
+                    @click="clickCol($event, `${c.id}/${s}/${t.name}`, nodeOf(`${c.id}/${s}/${t.name}`)?.columns ?? [], col)"
                     @dblclick="copy(col.name)"
+                    @contextmenu="colMenu($event, c, s, t, nodeOf(`${c.id}/${s}/${t.name}`)?.columns ?? [], col)"
                   >
                     <Icon :name="col.pk ? 'key' : 'column'" :size="13" class="ico" :class="{ pk: col.pk }" />
                     <span class="label">{{ col.name }}</span>

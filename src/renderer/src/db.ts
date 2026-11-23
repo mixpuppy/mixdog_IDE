@@ -10,7 +10,7 @@ import { reactive } from 'vue'
 import type { editor as Editor } from 'monaco-editor'
 import { openFile } from './store'
 import { docs } from './monaco'
-import { promptText, confirmSheet } from './ui'
+import { promptText, confirmSheet, chooseSheet } from './ui'
 import { store } from './store'
 import { toast } from './ide'
 
@@ -46,18 +46,35 @@ export interface DbColumn {
   comment: string
 }
 
+export interface TxState {
+  manual: boolean
+  pending: boolean
+}
+
 export interface DbResult {
   columns: string[]
   rows: unknown[][]
   more: boolean
   affected: number | null
   ms: number
+  tx?: TxState
+}
+
+/** unsaved edits of a result grid */
+export interface GridEdit {
+  /** changed cells of fetched rows: 'row:col' -> new value (null = NULL) */
+  cells: Record<string, unknown>
+  /** fetched rows marked for delete */
+  deleted: Record<number, true>
+  /** new rows (undefined cell = column default) */
+  added: unknown[][]
 }
 
 export interface ResultItem {
   sql: string
   result?: DbResult
   error?: string
+  edit?: GridEdit
 }
 
 /** results of one .sql file / console */
@@ -111,8 +128,14 @@ export const db = reactive({
   sqlConn: loadSqlConn(),
   /** result panel height (px) */
   resultHeight: Number(localStorage.getItem('mixdog.dbResultHeight')) || 260,
-  consolesDir: ''
+  consolesDir: '',
+  /** manual commit mode / uncommitted changes per connection */
+  tx: {} as Record<string, TxState>,
+  /** result grids with unsaved edits (path -> count), for the close warning */
+  unsavedEdits: {} as Record<string, number>
 })
+
+export const txOf = (id: string | null | undefined): TxState => (id && db.tx[id]) || { manual: false, pending: false }
 
 /** passwords typed for connections that don't store one (kept in memory for this window only) */
 const typed = new Map<string, string>()
@@ -158,12 +181,97 @@ export async function ensureConnected(id: string, quiet = false): Promise<boolea
   }
 }
 
-export async function disconnect(id: string): Promise<void> {
-  await window.api.db.disconnect(id)
+export async function disconnect(id: string, ask = true): Promise<boolean> {
   const c = connOf(id)
+  if (ask && txOf(id).pending) {
+    const i = await chooseSheet('커밋하지 않은 변경', `'${c?.name}' 에 커밋하지 않은 변경이 있습니다. 연결을 끊기 전에 어떻게 할까요?`, ['커밋', '롤백'])
+    if (i === null) return false
+    try {
+      db.tx[id] = i === 0 ? await window.api.db.commit(id) : await window.api.db.rollback(id)
+    } catch (e) {
+      notify(`${i === 0 ? '커밋' : '롤백'} 실패: ${(e as Error).message}`)
+      return false
+    }
+  }
+  await window.api.db.disconnect(id)
+  if (db.tx[id]) db.tx[id].pending = false
   if (c) c.connected = false
   for (const k of Object.keys(db.tree)) if (k === id || k.startsWith(id + '/')) delete db.tree[k]
+  return true
 }
+
+/* ---------------------------------------------------------------- transactions */
+
+/** Auto commit on / off. Turning it back on commits pending changes (asks first). */
+export async function setManualCommit(id: string, on: boolean): Promise<void> {
+  if (!on && txOf(id).pending) {
+    const i = await chooseSheet('자동 커밋으로 바꾸기', '커밋하지 않은 변경이 있습니다.', ['커밋하고 바꾸기', '롤백하고 바꾸기'])
+    if (i === null) return
+    if (i === 1) await rollbackTx(id)
+  }
+  try {
+    db.tx[id] = await window.api.db.setManual(id, on)
+  } catch (e) {
+    notify((e as Error).message)
+  }
+}
+
+export async function commitTx(id: string): Promise<void> {
+  try {
+    db.tx[id] = await window.api.db.commit(id)
+    toast('커밋했습니다', 'ok')
+  } catch (e) {
+    notify(`커밋 실패: ${(e as Error).message}`)
+  }
+}
+
+export async function rollbackTx(id: string): Promise<void> {
+  try {
+    db.tx[id] = await window.api.db.rollback(id)
+    toast('롤백했습니다', 'ok')
+    // grids of this connection may show rows that no longer exist: read them again
+    for (const rs of Object.values(db.results)) {
+      if (rs.connId !== id || rs.running) continue
+      const it = rs.items[rs.active]
+      if (!it?.result?.columns.length || it.edit) continue
+      it.result = (await window.api.db.query(id, it.sql).catch(() => it.result)) as unknown as DbResult
+    }
+  } catch (e) {
+    notify(`롤백 실패: ${(e as Error).message}`)
+  }
+}
+
+export interface SaveStatement {
+  sql: string
+  params: unknown[]
+  expect?: number
+}
+
+/** Run the statements of a grid save (all or nothing); throws with the DB error. */
+export async function saveStatements(id: string, statements: SaveStatement[]): Promise<number> {
+  const r = await window.api.db.saveChanges(id, statements)
+  db.tx[id] = r.tx
+  return r.affected
+}
+
+/* closing the window with uncommitted changes or unsaved grid edits: ask first */
+let closing = false
+window.addEventListener('beforeunload', (e) => {
+  if (closing) return
+  const ids = Object.entries(db.tx).filter(([, t]) => t.pending).map(([id]) => id)
+  const edits = Object.values(db.unsavedEdits).reduce((a, b) => a + b, 0)
+  if (!ids.length && !edits) return
+  e.preventDefault()
+  e.returnValue = false
+  const names = ids.map((id) => connOf(id)?.name ?? id).join(', ')
+  const msg = [ids.length ? `커밋하지 않은 DB 변경: ${names}` : '', edits ? `결과 표에 저장하지 않은 수정 ${edits}건` : ''].filter(Boolean).join('\n')
+  void chooseSheet('닫기 전에 확인', msg, ids.length ? ['커밋하고 닫기', '롤백하고 닫기'] : ['저장하지 않고 닫기']).then(async (i) => {
+    if (i === null) return
+    for (const id of ids) await (i === 0 ? window.api.db.commit(id) : window.api.db.rollback(id)).catch(() => {})
+    closing = true
+    window.close()
+  })
+})
 
 /* ---------------------------------------------------------------- tree */
 
@@ -227,6 +335,36 @@ export async function columnsOf(id: string, schema: string, table: string): Prom
   const cols = (await window.api.db.columns(id, schema, table)) as unknown as DbColumn[]
   node(key).columns = cols
   return cols
+}
+
+/** Schemas of a connection and its current schema (cached in the tree). */
+export async function schemasOf(id: string): Promise<{ schemas: string[]; current: string }> {
+  const n = db.tree[id]
+  if (n?.schemas) return { schemas: n.schemas, current: n.current ?? '' }
+  const r = await window.api.db.schemas(id)
+  const m = node(id)
+  m.schemas = r.schemas
+  m.current = r.current
+  return r
+}
+
+/** Tables / views of a schema (cached in the tree). */
+export async function objectsOf(id: string, schema: string): Promise<DbObject[]> {
+  const key = `${id}/${schema}`
+  const cached = db.tree[key]?.objects
+  if (cached) return cached
+  const o = (await window.api.db.objects(id, schema)) as unknown as DbObject[]
+  node(key).objects = o
+  return o
+}
+
+/** Connected already, or can connect without asking (stored password). Used by background features like completion. */
+export async function connectQuietly(id: string): Promise<boolean> {
+  const c = connOf(id)
+  if (!c) return false
+  if (c.connected) return true
+  if (!c.hasPassword && !typed.has(c.id)) return false
+  return ensureConnected(id, true)
 }
 
 /** Drop cached metadata (after DDL, or the refresh button). */
@@ -385,6 +523,7 @@ export async function runSql(path: string, statements: string[]): Promise<void> 
       rs.active = rs.items.length - 1
       try {
         item.result = (await window.api.db.query(id, sql)) as unknown as DbResult
+        if (item.result.tx) db.tx[id] = item.result.tx
       } catch (e) {
         item.error = (e as Error).message
         break // stop the script at the first error, like IntelliJ
@@ -440,9 +579,9 @@ export function stopQuery(path: string): void {
   const rs = db.results[path]
   if (!rs?.running) return
   // closing the connection is the one cancel every driver supports; the next query reconnects
-  void disconnect(rs.connId).then(() => {
+  void disconnect(rs.connId, false).then(() => {
     const it = rs.items[rs.items.length - 1]
-    if (it && !it.result) it.error = '사용자가 중지했습니다 (연결을 닫았습니다)'
+    if (it && !it.result) it.error = '사용자가 중지했습니다 (연결을 닫았습니다. 커밋하지 않은 변경은 롤백됐습니다)'
     rs.running = false
   })
 }

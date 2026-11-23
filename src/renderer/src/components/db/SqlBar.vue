@@ -2,9 +2,10 @@
 /** Thin bar above a .sql editor: which connection it runs on, run / run all / stop. */
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import Icon from '../Icon.vue'
-import { db, loadConnections, connIdOf, setSqlConn, isConsole, runAll, runFromEditor, stopQuery, newConnection, kindLabel } from '../../db'
+import { db, loadConnections, connIdOf, setSqlConn, isConsole, runAll, runFromEditor, stopQuery, newConnection, kindLabel, txOf, setManualCommit, commitTx, rollbackTx } from '../../db'
 import { editorRef, docs } from '../../monaco'
 import { tabsOf } from '../../store'
+import { registerSqlCompletion } from '../../dbcomplete'
 
 const props = defineProps<{ path: string }>()
 
@@ -22,6 +23,7 @@ function autosave(): void {
 }
 
 onMounted(async () => {
+  registerSqlCompletion()
   if (!db.loaded) await loadConnections()
   if (!isConsole(props.path)) return
   sub = docs.get(props.path)?.model.onDidChangeContent(() => {
@@ -41,6 +43,7 @@ const connId = computed(() => connIdOf(props.path))
 const conn = computed(() => db.conns.find((c) => c.id === connId.value))
 const running = computed(() => !!db.results[props.path]?.running)
 const fixed = computed(() => isConsole(props.path))
+const tx = computed(() => txOf(connId.value))
 
 function pick(e: Event): void {
   const v = (e.target as HTMLSelectElement).value
@@ -75,6 +78,22 @@ async function runCurrent(): Promise<void> {
       <option v-for="c in db.conns" :key="c.id" :value="c.id">{{ c.name }} ({{ kindLabel(c.kind) }})</option>
       <option value="__new">+ 새 연결…</option>
     </select>
+    <template v-if="conn && !conn.readOnly">
+      <span class="sep" />
+      <button
+        class="txmode"
+        :class="{ on: tx.manual }"
+        :title="tx.manual ? '수동 커밋: 변경은 [커밋] 을 눌러야 확정됩니다 (누르면 자동 커밋으로)' : '자동 커밋: 실행하면 바로 확정됩니다 (누르면 수동 커밋으로)'"
+        @click="setManualCommit(conn.id, !tx.manual)"
+      >
+        {{ tx.manual ? '수동 커밋' : '자동 커밋' }}
+      </button>
+      <template v-if="tx.manual">
+        <button class="txbtn ok" :disabled="!tx.pending || running" title="커밋 (변경 확정)" @click="commitTx(conn.id)"><Icon name="check" :size="12" />커밋</button>
+        <button class="txbtn" :disabled="!tx.pending || running" title="롤백 (변경 취소)" @click="rollbackTx(conn.id)"><Icon name="undo" :size="12" />롤백</button>
+      </template>
+      <span v-if="tx.pending" class="pend" title="커밋하지 않은 변경이 있습니다">● 커밋 대기</span>
+    </template>
     <span v-if="conn" class="meta">{{ kindLabel(conn.kind) }} · {{ conn.user }}@{{ conn.host }}<template v-if="conn.readOnly"> · 읽기 전용</template></span>
     <span v-if="running" class="busy">실행 중…</span>
   </div>
@@ -143,6 +162,38 @@ button:disabled {
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.txmode {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+.txmode:hover,
+.txbtn:hover:not(:disabled) {
+  background: var(--hover);
+}
+.txmode.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.txbtn {
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+.txbtn.ok {
+  color: var(--green);
+}
+.pend {
+  color: #d9a400;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 .busy {

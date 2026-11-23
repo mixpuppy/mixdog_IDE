@@ -59,6 +59,23 @@ export interface DbResult {
   /** rows changed by INSERT / UPDATE / DELETE (no result set) */
   affected: number | null
   ms: number
+  /** manual-commit state of the connection after the statement */
+  tx?: TxState
+}
+
+export interface TxState {
+  /** manual commit mode (changes wait for commit / rollback) */
+  manual: boolean
+  /** uncommitted changes exist */
+  pending: boolean
+}
+
+/** one data-changing statement of a grid save: '?' placeholders, values in order */
+export interface DbStatement {
+  sql: string
+  params: unknown[]
+  /** fail (and undo the save) unless exactly this many rows changed */
+  expect?: number
 }
 
 interface FileShape {
@@ -250,7 +267,34 @@ interface Session {
   query(sql: string, limit: number): Promise<Omit<DbResult, 'ms'>>
   /** small metadata query, all rows as objects */
   rows(sql: string, params: unknown[]): Promise<Record<string, unknown>[]>
+  /** data-changing statement with '?' binds; returns the rows changed */
+  exec(sql: string, params: unknown[]): Promise<number>
+  /** explicit transaction: statements after begin() wait for commit() / rollback() */
+  begin(): Promise<void>
+  commit(): Promise<void>
+  rollback(): Promise<void>
+  /** a transaction is open */
+  inTx(): boolean
+  /** the server ended the transaction by itself (DDL implicit commit) */
+  endTx(): void
   close(): Promise<void>
+}
+
+/** Turn '?' placeholders (outside string literals) into the driver's style: $1 / @p1 / :1 */
+function binds(sql: string, style: (n: number) => string): string {
+  let n = 0
+  let out = ''
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]
+    if (ch === "'") {
+      const j = sql.indexOf("'", i + 1)
+      const e = j < 0 ? sql.length : j
+      out += sql.slice(i, e + 1)
+      i = e
+    } else if (ch === '?') out += style(++n)
+    else out += ch
+  }
+  return out
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -280,10 +324,26 @@ async function mysqlSession(c: DbConn, password: string): Promise<Session> {
     return r as Record<string, unknown>[]
   }
   const v = (await all('SELECT VERSION() AS v, DATABASE() AS d'))[0]
+  let tx = false
   return {
     version: String(v.v),
     current: String(v.d ?? ''),
     rows: all,
+    exec: async (sql, params) => ((await p.query(sql, params))[0] as any)?.affectedRows ?? 0,
+    begin: async () => {
+      await p.query('START TRANSACTION')
+      tx = true
+    },
+    commit: async () => {
+      await p.query('COMMIT')
+      tx = false
+    },
+    rollback: async () => {
+      await p.query('ROLLBACK')
+      tx = false
+    },
+    inTx: () => tx,
+    endTx: () => (tx = false),
     query: (sql, limit) =>
       new Promise((resolve, reject) => {
         let columns: string[] | null = null
@@ -322,10 +382,26 @@ async function postgresSession(c: DbConn, password: string): Promise<Session> {
   await client.connect()
   const all = async (sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> => (await client.query(sql, params)).rows
   const v = (await all('SELECT version() AS v, current_schema() AS s'))[0]
+  let tx = false
   return {
     version: String(v.v).split(' on ')[0],
     current: String(v.s ?? 'public'),
     rows: all,
+    exec: async (sql, params) => (await client.query(binds(sql, (n) => `$${n}`), params)).rowCount ?? 0,
+    begin: async () => {
+      await client.query('BEGIN')
+      tx = true
+    },
+    commit: async () => {
+      await client.query('COMMIT')
+      tx = false
+    },
+    rollback: async () => {
+      await client.query('ROLLBACK')
+      tx = false
+    },
+    inTx: () => tx,
+    endTx: () => (tx = false),
     query: async (sql, limit) => {
       const cur = client.query(new Cursor(sql, [], { rowMode: 'array' }))
       try {
@@ -356,8 +432,11 @@ async function mssqlSession(c: DbConn, password: string): Promise<Session> {
     options: { encrypt: !!c.encrypt, trustServerCertificate: true, useUTC: false, enableArithAbort: true }
   })
   await pool.connect()
+  // pool of one: while a transaction holds the connection every request must go through it
+  let tx: any = null
+  const req = (): any => (tx ? new sql.Request(tx) : pool.request())
   const all = async (q: string, params: unknown[] = []): Promise<Record<string, unknown>[]> => {
-    const r = pool.request()
+    const r = req()
     params.forEach((p, i) => r.input(`p${i + 1}`, p))
     return (await r.query(q)).recordset ?? []
   }
@@ -366,9 +445,36 @@ async function mssqlSession(c: DbConn, password: string): Promise<Session> {
     version: String(v.v).split('\n')[0].trim(),
     current: String(v.s ?? 'dbo'),
     rows: all,
+    exec: async (q, params) => {
+      const r = req()
+      params.forEach((p, i) => r.input(`p${i + 1}`, p))
+      const res = await r.query(binds(q, (n) => `@p${n}`))
+      return (res.rowsAffected ?? []).reduce((a: number, b: number) => a + b, 0)
+    },
+    begin: async () => {
+      const t = new sql.Transaction(pool)
+      await t.begin()
+      // the server aborted it (e.g. a deadlock or XACT_ABORT error)
+      t.on('rollback', () => {
+        if (tx === t) tx = null
+      })
+      tx = t
+    },
+    commit: async () => {
+      const t = tx
+      tx = null
+      if (t) await t.commit()
+    },
+    rollback: async () => {
+      const t = tx
+      tx = null
+      if (t) await t.rollback()
+    },
+    inTx: () => !!tx,
+    endTx: () => {},
     query: (q, limit) =>
       new Promise((resolve, reject) => {
-        const r: any = pool.request()
+        const r: any = req()
         r.stream = true
         r.arrayRowMode = true
         let columns: string[] | null = null
@@ -467,15 +573,31 @@ async function oracleSession(c: DbConn, password: string): Promise<Session> {
   const all = async (sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> =>
     (await conn.execute(sql, params, { outFormat: oracledb.OUT_FORMAT_OBJECT })).rows ?? []
   const v = (await all(`SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS S FROM DUAL`))[0]
+  // Oracle has no BEGIN: a transaction is simply "don't auto-commit until commit() / rollback()"
+  let tx = false
   return {
     version: `${conn.oracleServerVersionString ?? ''} (${oracleMode})`,
     current: String(v.S ?? c.user.toUpperCase()),
     rows: all,
+    exec: async (sql, params) => (await conn.execute(binds(sql, (n) => `:${n}`), params, { autoCommit: !tx })).rowsAffected ?? 0,
+    begin: async () => {
+      tx = true
+    },
+    commit: async () => {
+      await conn.commit()
+      tx = false
+    },
+    rollback: async () => {
+      await conn.rollback()
+      tx = false
+    },
+    inTx: () => tx,
+    endTx: () => (tx = false),
     query: async (sql, limit) => {
       // SQL statements must not end with ';' in Oracle; PL/SQL blocks must (END;)
       const plsql = /^(begin|declare|create\s+(or\s+replace\s+)?(procedure|function|package|trigger|type))\b/i.test(code(head(sql)).trim())
       const text = plsql ? sql.trim().replace(/\/\s*$/, '') : sql.trim().replace(/;\s*$/, '')
-      const r = await conn.execute(text, [], { maxRows: limit + 1, outFormat: oracledb.OUT_FORMAT_ARRAY, autoCommit: true })
+      const r = await conn.execute(text, [], { maxRows: limit + 1, outFormat: oracledb.OUT_FORMAT_ARRAY, autoCommit: !tx })
       if (!r.metaData) return { columns: [], rows: [], more: false, affected: r.rowsAffected ?? 0 }
       const rows = (r.rows ?? []) as unknown[][]
       return { columns: r.metaData.map((m: any) => m.name), rows: rows.slice(0, limit).map((x) => x.map(cell)), more: rows.length > limit, affected: null }
@@ -497,6 +619,15 @@ const OPEN: Record<DbKind, (c: DbConn, pw: string) => Promise<Session>> = {
 const sessions = new Map<string, Promise<Session>>()
 /** one statement at a time per connection */
 const queues = new Map<string, Promise<unknown>>()
+/** connections in manual commit mode (kept across reconnects for this run of the IDE) */
+const manual = new Set<string>()
+/** connections with uncommitted changes */
+const pending = new Set<string>()
+
+export const txState = (id: string): TxState => ({ manual: manual.has(id), pending: pending.has(id) })
+
+/** statements that make MySQL / Oracle commit on their own */
+const IMPLICIT_COMMIT = /^\s*(create|alter|drop|rename|truncate|grant|revoke|comment)\b/i
 
 function passwordOf(id: string, given?: string | null): string {
   if (given != null) return given
@@ -549,6 +680,8 @@ export async function disconnect(id: string): Promise<void> {
   const s = sessions.get(id)
   sessions.delete(id)
   queues.delete(id)
+  // closing without commit: every server rolls back the open transaction
+  if (pending.delete(id)) publish('db.rollback', { id, reason: 'disconnect' })
   if (s) await s.then((x) => x.close()).catch(() => {})
 }
 
@@ -563,9 +696,28 @@ export async function runQuery(id: string, sql: string, opts: { limit?: number; 
     throw new Error(c.readOnly ? `'${c.name}' 은(는) 읽기 전용 연결입니다. 조회(SELECT) 문만 실행할 수 있습니다.` : '조회(SELECT) 문만 실행할 수 있습니다.')
   const s = await session(id, opts.password)
   const t0 = Date.now()
+  // COMMIT / ROLLBACK typed in the console: same as the toolbar buttons (keeps the pending state right)
+  const word = code(head(sql)).trim().replace(/;\s*$/, '').toLowerCase().replace(/\s+/g, ' ')
+  if (/^(commit|rollback)( work| transaction| tran)?$/.test(word)) {
+    const tx = word.startsWith('commit') ? await commit(id) : await rollback(id)
+    publish('db.query', { connection: c.name, sql, rows: 0, ms: Date.now() - t0 }, opts.source ?? 'user')
+    return { columns: [], rows: [], more: false, affected: 0, ms: Date.now() - t0, tx }
+  }
   try {
-    const r = await serial(id, () => s.query(sql, limit))
-    const res = { ...r, ms: Date.now() - t0 }
+    const r = await serial(id, async () => {
+      // manual commit: every statement runs inside a transaction that waits for commit / rollback
+      if (manual.has(id) && !s.inTx()) await s.begin()
+      const out = await s.query(sql, limit)
+      if (manual.has(id)) {
+        if (c.kind !== 'postgres' && c.kind !== 'mssql' && IMPLICIT_COMMIT.test(head(sql))) {
+          // DDL committed everything so far
+          s.endTx()
+          pending.delete(id)
+        } else if (!isReadOnly(sql)) pending.add(id)
+      }
+      return out
+    })
+    const res = { ...r, ms: Date.now() - t0, tx: txState(id) }
     publish(
       'db.query',
       { connection: c.name, sql: sql.slice(0, 500), rows: res.rows.length, more: res.more, affected: res.affected, ms: res.ms },
@@ -576,8 +728,91 @@ export async function runQuery(id: string, sql: string, opts: { limit?: number; 
     publish('db.query', { connection: c.name, sql: sql.slice(0, 500), error: String((e as Error)?.message ?? e) }, opts.source ?? 'user')
     // a dropped / killed connection: next query reconnects
     if (/ECONNRESET|closed|ETIMEDOUT|EPIPE|Connection lost|not connected|NJS-003|NJS-500|DPI-1080/i.test(String((e as Error)?.message))) void disconnect(id)
+    // PostgreSQL: after an error the open transaction accepts nothing until it is rolled back
+    if (c.kind === 'postgres' && manual.has(id) && /current transaction is aborted/i.test(String((e as Error)?.message)))
+      throw new Error(`${(e as Error).message}\n→ 앞의 오류로 트랜잭션이 중단됐습니다. [롤백] 후 다시 실행하세요.`)
     throw e
   }
+}
+
+/** Manual / auto commit. Switching to auto commits what is pending (IntelliJ does the same). */
+export async function setManualCommit(id: string, on: boolean): Promise<TxState> {
+  if (on) manual.add(id)
+  else {
+    manual.delete(id)
+    const s = sessions.get(id)
+    if (s) {
+      const x = await s
+      if (x.inTx()) await serial(id, () => x.commit())
+    }
+    if (pending.delete(id)) publish('db.commit', { id, reason: 'auto-commit on' })
+  }
+  return txState(id)
+}
+
+export async function commit(id: string): Promise<TxState> {
+  const s = sessions.get(id)
+  if (s) {
+    const x = await s
+    if (x.inTx()) await serial(id, () => x.commit())
+  }
+  if (pending.delete(id)) publish('db.commit', { id, connection: getConnection(id).name })
+  return txState(id)
+}
+
+export async function rollback(id: string): Promise<TxState> {
+  const s = sessions.get(id)
+  if (s) {
+    const x = await s
+    if (x.inTx()) await serial(id, () => x.rollback())
+  }
+  if (pending.delete(id)) publish('db.rollback', { id, connection: getConnection(id).name })
+  return txState(id)
+}
+
+const SAVEPOINT: Record<DbKind, [string, string]> = {
+  mysql: ['SAVEPOINT mixdog_save', 'ROLLBACK TO SAVEPOINT mixdog_save'],
+  mariadb: ['SAVEPOINT mixdog_save', 'ROLLBACK TO SAVEPOINT mixdog_save'],
+  postgres: ['SAVEPOINT mixdog_save', 'ROLLBACK TO SAVEPOINT mixdog_save'],
+  oracle: ['SAVEPOINT mixdog_save', 'ROLLBACK TO SAVEPOINT mixdog_save'],
+  mssql: ['SAVE TRANSACTION mixdog_save', 'ROLLBACK TRANSACTION mixdog_save']
+}
+
+/**
+ * Save edits of the result grid: all statements succeed or none does.
+ * Auto commit: one transaction, committed at the end. Manual commit: inside the open transaction
+ * (a savepoint undoes a failed save), committed later by the user.
+ */
+export async function saveChanges(id: string, statements: DbStatement[], password?: string | null): Promise<{ affected: number; tx: TxState }> {
+  const c = getConnection(id)
+  if (c.readOnly) throw new Error(`'${c.name}' 은(는) 읽기 전용 연결입니다.`)
+  const s = await session(id, password)
+  const isManual = manual.has(id)
+  let affected = 0
+  await serial(id, async () => {
+    if (!s.inTx()) await s.begin()
+    if (isManual) await s.exec(SAVEPOINT[c.kind][0], [])
+    try {
+      for (const st of statements) {
+        const n = await s.exec(st.sql, st.params)
+        if (st.expect !== undefined && n !== st.expect)
+          throw new Error(
+            n === 0
+              ? `바꿀 행을 찾지 못했습니다 (다른 곳에서 바뀌었거나 지워졌을 수 있습니다). 다시 조회한 뒤 수정하세요.\n${st.sql}`
+              : `${n}개 행이 함께 바뀌어 저장을 취소했습니다 (PK 가 유일하지 않음).\n${st.sql}`
+          )
+        affected += n
+      }
+    } catch (e) {
+      if (isManual) await s.exec(SAVEPOINT[c.kind][1], []).catch(() => {})
+      else await s.rollback().catch(() => {})
+      throw e
+    }
+    if (isManual) pending.add(id)
+    else await s.commit()
+  })
+  publish('db.save', { connection: c.name, statements: statements.length, affected, manual: isManual })
+  return { affected, tx: txState(id) }
 }
 
 /* ------------------------------------------------------------------ metadata */

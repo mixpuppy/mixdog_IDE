@@ -69,7 +69,15 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - **쿼리 콘솔**: 연결마다 하나씩 있는 `.sql` 파일(`%APPDATA%\mixdog-ide\consoles`), 자동 저장. `Ctrl+Enter` = 커서가 있는 문장 실행(`;` 또는 빈 줄로 구분, Oracle PL/SQL 블록은 `/` 줄까지), 선택 후 `Ctrl+Enter` = 선택한 문장들 실행(결과 탭 여러 개).
   프로젝트의 다른 `.sql` 파일도 편집기 위 DB 선택에서 연결을 고르면 같은 방법으로 실행됩니다.
 - 결과 표: 한 번에 최대 500행만 가져옵니다 (더 있으면 표시, 큰 테이블도 메모리 그대로). 보이는 행만 그려서 가볍고, 셀 선택·방향키·`Ctrl+C`, 우클릭 → 행/전체 복사(엑셀에 붙여넣기), 열 너비 조절.
-- 실행 중 [중지] = 연결을 닫아 쿼리를 멈춤 (다음 쿼리 때 다시 연결).
+- **자동완성** (`.sql` 편집기): 키워드, 현재 스키마의 테이블·뷰(주석), `FROM` 뒤엔 테이블·스키마, 문장에 쓴 테이블의 컬럼(타입·PK·주석), `별칭.` / `테이블.` 뒤엔 그 테이블 컬럼, `스키마.` 뒤엔 그 스키마 테이블. 메타데이터는 트리와 같은 캐시를 써서 DB 에 한 번만 물어봅니다 (비밀번호를 저장하지 않은 연결은 먼저 연결해야 컬럼이 나옴).
+- **SQL 생성**: 테이블 우클릭 → SELECT(컬럼 목록 + PK 조건) / INSERT / UPDATE / DELETE 를 콘솔에 넣기(각 줄에 타입·주석 주석문), 컬럼 목록 복사. 컬럼을 `Ctrl/Shift+클릭` 으로 여러 개 고르고 우클릭 → 그 컬럼만으로 SELECT / INSERT / UPDATE.
+- **결과 표 수정**: PK 가 결과에 있는 단일 테이블 SELECT 결과는 바로 고칠 수 있습니다 (헤더에 ✎ 테이블명 표시, JOIN·GROUP BY·서브쿼리·뷰·PK 없는 테이블·읽기 전용 연결은 불가 - 이유는 마우스를 올리면 표시).
+  더블클릭·F2·바로 입력 = 값 수정(Enter 확정 · Tab 다음 칸 · Esc 취소), `Ctrl+Alt+N` NULL, `Alt+Insert` 행 추가(비워 둔 칸은 기본값), `Delete` 행 삭제 표시, `Ctrl+Z` 선택 영역 되돌리기, **`Ctrl+S` 저장**.
+  저장은 PK 기준 UPDATE / DELETE / INSERT 를 한 트랜잭션으로 실행하고(한 행이라도 PK 로 못 찾거나 여러 행이 바뀌면 전부 취소), 끝나면 다시 조회합니다. [SQL 미리보기]로 실행될 문장을 볼 수 있습니다.
+- 결과 표 선택: 드래그·Shift+클릭으로 범위, 행 번호 클릭으로 행 전체, `Ctrl+A` 전체. 우클릭 → 선택한 행을 **INSERT 문 / UPDATE 문으로 복사**.
+- **자동 커밋 / 수동 커밋** (편집기 위 막대): 기본은 자동 커밋. 수동 커밋이면 실행·저장한 변경이 [커밋]을 누르기 전까지 확정되지 않고(`● 커밋 대기` 표시), [롤백]으로 취소합니다. 콘솔에 `COMMIT` / `ROLLBACK` 을 쳐도 같습니다.
+  커밋하지 않은 변경이 있으면 연결 끊기·창 닫기 전에 커밋/롤백을 묻습니다 (MySQL·Oracle 은 DDL 이 자동 커밋함, PostgreSQL 은 오류 후 롤백해야 계속 가능).
+- 실행 중 [중지] = 연결을 닫아 쿼리를 멈춤 (다음 쿼리 때 다시 연결, 커밋 안 한 변경은 롤백됨).
 - 드라이버는 순수 JS(mysql2, pg, mssql, oracledb)라 따로 설치할 것이 없고, 처음 연결할 때만 불러옵니다.
 - **Oracle 11g**: 기본(Thin) 방식은 12.1 이상만 됩니다. 11g 서버는 **Oracle Instant Client 19c (64bit)** 를 받아 연결 설정의 Oracle Client 폴더로 지정하고 IDE 를 다시 시작하세요 (19 미만 클라이언트, 예: Oracle XE 11g 에 들어 있는 것은 못 씀).
 - Claude 에는 `db_list_connections`, `db_describe`, `db_query`(조회만, 기본 100행) 도구로 열립니다. 변경 문은 거부되므로 Claude 는 SQL 을 파일로 써 주고 사용자가 실행합니다. 비밀번호를 저장하지 않은 연결은 사용자가 먼저 연결해야 씁니다.
@@ -117,7 +125,8 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 | `src/main/tools/deploy.ts` | 실행 전 빠른 빌드 (증분 컴파일 + 바뀐 파일만 exploded 폴더에 복사) |
 | `src/main/tools/tomcat.ts` | Tomcat 탐지 · 다운로드 · 프로젝트별 CATALINA_BASE · 실행/디버그 · JSP 저장 시 반영 |
 | `src/main/tools/db.ts` | DB 연결 (드라이버 지연 로딩, 비밀번호 암호화 저장, 행 제한 조회, 스키마·테이블·컬럼 조회, 읽기 전용 판정) |
-| `src/renderer/src/db.ts` + `components/db/` | 데이터베이스 도구 창, 연결 대화상자, SQL 편집기 막대·문장 나누기(Ctrl+Enter), 결과 표 |
+| `src/renderer/src/db.ts` + `components/db/` | 데이터베이스 도구 창, 연결 대화상자, SQL 편집기 막대·문장 나누기(Ctrl+Enter)·커밋 모드, 결과 표(수정·저장) |
+| `src/renderer/src/dbsql.ts` · `dbcomplete.ts` | SQL 에서 테이블 찾기·이름 따옴표·값 리터럴·SQL 생성 / SQL 자동완성 |
 | `src/main/tools/git.ts` | Git (사용자의 git.exe·인증 그대로) - 상태·로그·브랜치·커밋·원격, `.git` 변경 감시 |
 | `src/renderer/src/git.ts` + `components/git/` | Git 화면: 커밋 그래프 배치, 변경 파일·커밋 박스, 커밋 상세, diff, 브랜치 목록 |
 | `src/main/ipc.ts` | 렌더러용 IPC 핸들러 |
@@ -149,5 +158,6 @@ IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 �
 - [x] 5단계: 검색 - 어디서나 찾기(Shift 두 번), 파일·클래스·최근 파일 찾기, 프로젝트에서 찾기·바꾸기 (git ls-files 기반 파일 목록, .gitignore 존중)
 - [x] Maven / Gradle 도구 창 (오른쪽): 라이프사이클·플러그인 목표·프로필·의존성·모듈(Maven), 작업 그룹(Gradle), 더블클릭 실행, 목표 직접 실행(기록), 오프라인·테스트 건너뛰기, 의존성 업데이트(-U / --refresh-dependencies)
 - [x] 데이터베이스 1차: Oracle·MariaDB·MySQL·SQL Server·PostgreSQL 연결, 스키마 트리, 쿼리 콘솔(Ctrl+Enter), 결과 표, 읽기 전용 연결, Claude 조회 도구
-- [ ] 데이터베이스 2차: SQL 자동완성(테이블·컬럼), 결과 표에서 바로 수정, 내보내기(CSV·INSERT), 실행 계획, SSH 터널
+- [x] 데이터베이스 2차: SQL 자동완성(테이블·컬럼·별칭), SQL 생성, 결과 표에서 바로 수정·저장, 자동/수동 커밋
+- [ ] 데이터베이스 3차: 내보내기(CSV·엑셀), 실행 계획, SSH 터널, 테이블 DDL 보기
 - [ ] 6단계: LSP (Java: jdtls, Vue: vue-language-server, JSP)
