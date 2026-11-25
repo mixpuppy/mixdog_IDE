@@ -6,23 +6,18 @@ import { reactive } from 'vue'
 import type { IdeEvent, ProjectInfo } from './types'
 import { store, showPanel, reloadFromDisk } from './store'
 import { setProblemMarkers, type Problem } from './problems'
+import { newConsole, type ConsoleBuf } from './console'
 
-export interface ConsoleLine {
-  id: number
-  text: string
-  err: boolean
-}
-
-const MAX_LINES = 8000
-let lineSeq = 0
+export type { ConsoleLine } from './console'
 
 export const ide = reactive({
   info: null as ProjectInfo | null,
   building: false,
   tomcat: 'stopped' as 'stopped' | 'starting' | 'running',
   appUrl: null as string | null,
-  buildLines: [] as ConsoleLine[],
-  tomcatLines: [] as ConsoleLine[],
+  /** console buffers (not reactive: they update the view once per frame through their own tick) */
+  buildOut: newConsole() as ConsoleBuf,
+  tomcatOut: newConsole() as ConsoleBuf,
   lastBuild: null as { ok: boolean; ms?: number } | null,
   events: [] as IdeEvent[],
   downloads: {} as Record<string, { pct: number; phase?: string }>,
@@ -32,10 +27,11 @@ export const ide = reactive({
   problems: [] as Problem[]
 })
 
-function push(list: ConsoleLine[], text: string, err = false): void {
-  list.push({ id: ++lineSeq, text, err })
-  if (list.length > MAX_LINES) list.splice(0, list.length - MAX_LINES)
-}
+const push = (buf: ConsoleBuf, text: string, err = false): void => buf.add(text, err)
+
+/** output events carry a batch of lines ({ lines }) or, from older code paths, one ({ line }) */
+const linesOf = (d: Record<string, unknown>): { line: unknown; stream: unknown }[] =>
+  Array.isArray(d.lines) ? (d.lines as { line: unknown; stream: unknown }[]) : [{ line: d.line, stream: d.stream }]
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 export function toast(text: string, kind: 'info' | 'error' | 'ok' = 'info'): void {
@@ -76,17 +72,17 @@ function onEvent(ev: IdeEvent): void {
   switch (ev.type) {
     case 'build.start':
       ide.building = true
-      ide.buildLines = []
-      push(ide.buildLines, `▶ ${d.label ? `[${d.label}] ` : ''}${d.tool} ${d.goals}   (JDK: ${d.jdkHome ?? '시스템 기본'})`)
+      ide.buildOut.clear()
+      push(ide.buildOut, `▶ ${d.label ? `[${d.label}] ` : ''}${d.tool} ${d.goals}   (JDK: ${d.jdkHome ?? '시스템 기본'})`)
       showPanel('build')
       break
     case 'build.output':
-      push(ide.buildLines, String(d.line), d.stream === 'err')
+      for (const l of linesOf(d)) push(ide.buildOut, String(l.line), l.stream === 'err')
       return // don't flood the event list
     case 'build.end':
       ide.building = false
       ide.lastBuild = { ok: !!d.ok, ms: d.ms as number }
-      push(ide.buildLines, d.ok ? `✔ 빌드 성공 (${((d.ms as number) / 1000).toFixed(1)}초)` : `✖ 빌드 실패 (exit ${d.code})`, !d.ok)
+      push(ide.buildOut, d.ok ? `✔ 빌드 성공 (${((d.ms as number) / 1000).toFixed(1)}초)` : `✖ 빌드 실패 (exit ${d.code})`, !d.ok)
       {
         const errs = ide.problems.filter((p) => p.severity === 'error').length
         toast(d.ok ? '빌드 성공' : errs ? `빌드 실패 · 컴파일 오류 ${errs}건 (문제 창)` : '빌드 실패', d.ok ? 'ok' : 'error')
@@ -99,26 +95,26 @@ function onEvent(ev: IdeEvent): void {
     case 'tomcat.start':
       ide.tomcat = 'starting'
       ide.appUrl = String(d.url)
-      ide.tomcatLines = []
-      push(ide.tomcatLines, `▶ Tomcat ${d.version}${d.debug ? `  [디버그 포트 ${d.debugPort}]` : ''}`)
-      push(ide.tomcatLines, `  배포: ${d.docBase}`)
-      push(ide.tomcatLines, `  JDK: ${d.jdkHome}`)
+      ide.tomcatOut.clear()
+      push(ide.tomcatOut, `▶ Tomcat ${d.version}${d.debug ? `  [디버그 포트 ${d.debugPort}]` : ''}`)
+      push(ide.tomcatOut, `  배포: ${d.docBase}`)
+      push(ide.tomcatOut, `  JDK: ${d.jdkHome}`)
       showPanel('tomcat')
       break
     case 'tomcat.output':
-      push(ide.tomcatLines, String(d.line), d.stream === 'err' && /SEVERE|ERROR|Exception/.test(String(d.line)))
+      for (const l of linesOf(d)) push(ide.tomcatOut, String(l.line), l.stream === 'err' && /SEVERE|ERROR|Exception/.test(String(l.line)))
       return
     case 'tomcat.started':
       ide.tomcat = 'running'
-      push(ide.tomcatLines, `✔ 실행됨 → ${d.url}`)
+      push(ide.tomcatOut, `✔ 실행됨 → ${d.url}`)
       toast(`Tomcat 실행됨: ${d.url}`, 'ok')
       break
     case 'tomcat.stop':
       ide.tomcat = 'stopped'
-      push(ide.tomcatLines, `■ Tomcat 종료 (exit ${d.code})`)
+      push(ide.tomcatOut, `■ Tomcat 종료 (exit ${d.code})`)
       break
     case 'tomcat.sync':
-      push(ide.tomcatLines, `↻ 반영됨: ${d.file}`)
+      push(ide.tomcatOut, `↻ 반영됨: ${d.file}`)
       break
     case 'tomcat.error':
       toast(String(d.message), 'error')

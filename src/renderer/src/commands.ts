@@ -141,8 +141,8 @@ register({
   title: '콘솔 출력',
   description: 'Last lines of the build or Tomcat console. args: { which: "build" | "tomcat", lines? }',
   run: (a) => {
-    const lines = a.which === 'tomcat' ? ide.tomcatLines : ide.buildLines
-    return lines.slice(-(Number(a.lines) || 200)).map((l) => l.text).join('\n')
+    const buf = a.which === 'tomcat' ? ide.tomcatOut : ide.buildOut
+    return buf.tail(Number(a.lines) || 200).join('\n')
   }
 })
 register({

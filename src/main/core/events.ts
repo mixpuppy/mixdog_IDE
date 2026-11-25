@@ -34,9 +34,37 @@ const NOISY = new Set(['build.output', 'tomcat.output', 'git.changed', 'git.prog
  * Publish an event. `project` scopes it to the windows showing that project; by default the
  * scope of the current IPC request is used (see core/windows.ts), and IDE-wide events go everywhere.
  */
+/**
+ * Console output (Maven / Gradle / Tomcat logs) can be thousands of lines a second. Lines are
+ * collected for a short moment and sent to the window as one event `{ lines: [...] }`, and they are
+ * not kept in the event history (they would push every other event out of it).
+ */
+const OUTPUT = new Set(['build.output', 'tomcat.output'])
+const FLUSH_MS = 40
+const outQueue = new Map<string, { type: string; project: string | null; lines: Record<string, unknown>[] }>()
+let outTimer: ReturnType<typeof setTimeout> | null = null
+
+function flushOutput(): void {
+  outTimer = null
+  for (const q of outQueue.values()) {
+    const ev: IdeEvent = { id: ++seq, time: Date.now(), type: q.type, source: 'system', data: { lines: q.lines }, project: q.project }
+    for (const w of q.project ? windowsFor(q.project) : allWindows()) w.wc.send('event:stream', ev)
+  }
+  outQueue.clear()
+}
+
 export function publish(type: string, data: Record<string, unknown> = {}, source = 'system', project?: string | null): IdeEvent {
   const scope = project !== undefined ? project : (currentScope() ?? null)
   const ev: IdeEvent = { id: ++seq, time: Date.now(), type, source, data, project: scope }
+  if (OUTPUT.has(type)) {
+    emitter.emit('event', ev)
+    const k = `${type}|${scope ?? ''}`
+    let q = outQueue.get(k)
+    if (!q) outQueue.set(k, (q = { type, project: scope, lines: [] }))
+    q.lines.push(data)
+    outTimer ??= setTimeout(flushOutput, FLUSH_MS)
+    return ev
+  }
   log.push(ev)
   if (log.length > MAX) log.splice(0, log.length - MAX)
   emitter.emit('event', ev)
