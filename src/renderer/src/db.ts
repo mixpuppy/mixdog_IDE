@@ -13,6 +13,7 @@ import { docs } from './monaco'
 import { promptText, confirmSheet, chooseSheet } from './ui'
 import { store } from './store'
 import { toast } from './ide'
+import { registerCloseCheck } from './closeguard'
 
 export type DbKind = 'mysql' | 'mariadb' | 'postgres' | 'mssql' | 'oracle'
 
@@ -254,23 +255,21 @@ export async function saveStatements(id: string, statements: SaveStatement[]): P
   return r.affected
 }
 
-/* closing the window with uncommitted changes or unsaved grid edits: ask first */
-let closing = false
-window.addEventListener('beforeunload', (e) => {
-  if (closing) return
+/* closing the window with uncommitted changes or unsaved grid edits: ask first (closeguard.ts) */
+registerCloseCheck(() => {
   const ids = Object.entries(db.tx).filter(([, t]) => t.pending).map(([id]) => id)
   const edits = Object.values(db.unsavedEdits).reduce((a, b) => a + b, 0)
-  if (!ids.length && !edits) return
-  e.preventDefault()
-  e.returnValue = false
+  if (!ids.length && !edits) return null
   const names = ids.map((id) => connOf(id)?.name ?? id).join(', ')
-  const msg = [ids.length ? `커밋하지 않은 DB 변경: ${names}` : '', edits ? `결과 표에 저장하지 않은 수정 ${edits}건` : ''].filter(Boolean).join('\n')
-  void chooseSheet('닫기 전에 확인', msg, ids.length ? ['커밋하고 닫기', '롤백하고 닫기'] : ['저장하지 않고 닫기']).then(async (i) => {
-    if (i === null) return
-    for (const id of ids) await (i === 0 ? window.api.db.commit(id) : window.api.db.rollback(id)).catch(() => {})
-    closing = true
-    window.close()
-  })
+  const msg = [ids.length ? `커밋하지 않은 DB 변경: ${names}` : '', edits ? `결과 표에 저장하지 않은 수정 ${edits}건` : ''].filter(Boolean).join(String.fromCharCode(10))
+  return {
+    title: 'DB 변경',
+    message: msg,
+    options: ids.length ? ['롤백하고 닫기', '커밋하고 닫기'] : ['저장하지 않고 닫기'],
+    run: async (i) => {
+      for (const id of ids) await (i === 1 ? window.api.db.commit(id) : window.api.db.rollback(id)).catch(() => {})
+    }
+  }
 })
 
 /* ---------------------------------------------------------------- tree */

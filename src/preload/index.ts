@@ -80,6 +80,8 @@ const api = {
   run: {
     start: (path: string, name: string, debug: boolean) => invoke<boolean>('run:start', path, name, debug),
     stop: (path: string) => invoke('run:stop', path),
+    /** leave this project's Tomcat running when the IDE quits */
+    keepOnQuit: (path: string) => invoke('run:keepOnQuit', path),
     state: (path: string) => invoke<{ tomcat: string; building: boolean }>('run:state', path)
   },
   /** Pseudo-terminals (PowerShell panel, Claude Code) */

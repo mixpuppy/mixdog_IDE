@@ -19,6 +19,7 @@ import { ide, loadProjectInfo } from './ide'
 import { run } from './commands'
 import { ui } from './ui'
 import { dbg, resume, stepOver, stepInto, stepOut } from './debug'
+import './closeguard'
 const BranchPopup = defineAsyncComponent(() => import('./components/git/BranchPopup.vue'))
 const TaskList = defineAsyncComponent(() => import('./components/TaskList.vue'))
 const GotoPopup = defineAsyncComponent(() => import('./components/GotoPopup.vue'))

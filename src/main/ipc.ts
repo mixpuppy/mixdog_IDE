@@ -10,7 +10,7 @@ import { findDefinition } from './tools/navigate'
 import * as Dbg from './debug/session'
 import * as G from './tools/git'
 import * as S from './tools/search'
-import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable } from './tools/tomcat'
+import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable, keepOnQuit } from './tools/tomcat'
 import { ctxOf, runInScope, scopeOf } from './core/windows'
 import { syncWatchers } from './core/watcher'
 import * as D from './tools/db'
@@ -125,6 +125,7 @@ handle('run:start', async (path: string, name: string, debug: boolean) => {
   await startRun(path, name, debug)
   return true
 })
+handle('run:keepOnQuit', async (path: string) => keepOnQuit(path))
 handle('run:stop', async (path: string) => {
   await stopAll(path)
   return true

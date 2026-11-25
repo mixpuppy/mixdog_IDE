@@ -170,6 +170,8 @@ interface Running {
   projectDir: string
   /** what it serves, for hot-syncing saved web resources */
   docBase: string
+  /** leave it running when the IDE quits */
+  keep?: boolean
 }
 const servers = new Map<string, Running>()
 const keyOf = (p: string): string => p.toLowerCase()
@@ -280,6 +282,19 @@ export async function stopTomcat(projectDir?: string): Promise<void> {
   for (const s of list) if (s?.proc) await killTree(s.proc.pid)
 }
 
-app.on('before-quit', () => {
-  for (const s of servers.values()) if (s.proc) killTree(s.proc.pid)
+/** the user chose "계속 실행" when closing the IDE */
+export function keepOnQuit(projectDir: string): void {
+  const s = servers.get(keyOf(projectDir))
+  if (s) s.keep = true
+}
+
+// Quitting: wait until every Tomcat is really gone (taskkill), otherwise the IDE exits first and
+// the server keeps running in the background. Servers the user chose to keep are left alone.
+let quitting = false
+app.on('before-quit', (e) => {
+  const list = [...servers.values()].filter((s) => s.proc && !s.keep)
+  if (quitting || !list.length) return
+  e.preventDefault()
+  quitting = true
+  void Promise.race([Promise.all(list.map((s) => killTree(s.proc!.pid))), new Promise((r) => setTimeout(r, 8000))]).finally(() => app.quit())
 })
