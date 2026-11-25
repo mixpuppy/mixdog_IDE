@@ -73,6 +73,16 @@ export const layout = reactive({
   dockEpoch: { left: 0, right: 0, bottom: 0 } as Record<DockId, number>
 })
 
+// An IDE opens on its project: whichever dock holds the Project tool shows it at start
+// (the saved layout may have ended on Git or another tool last time).
+{
+  const home = (['left', 'right', 'bottom'] as DockId[]).find((d) => layout.docks[d].includes('project'))
+  if (home) {
+    layout.active[home] = 'project'
+    layout.open[home] = true
+  }
+}
+
 watch(
   () => [layout.docks, layout.active, layout.open, layout.size],
   () => {

@@ -1,12 +1,57 @@
 <script setup lang="ts">
 /** Right panel for a selected commit: message, author, parents, changed files. */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import GitFileList from './GitFileList.vue'
 import { git, select, openCommitDiff, refsAt, newBranch, checkout, cherryPick, revert } from '../../git'
 import { toast } from '../../ide'
 
 const d = computed(() => git.detail)
 const refs = computed(() => (d.value ? refsAt(d.value.hash) : []))
+
+/* draggable line between the commit message and the changed files (height remembered; double click = auto) */
+const KEY = 'mixdog.commitInfoH'
+const root = ref<HTMLElement | null>(null)
+const metaH = ref<number | null>(((): number | null => {
+  try {
+    const v = Number(localStorage.getItem(KEY))
+    return v > 0 ? v : null
+  } catch {
+    return null
+  }
+})())
+const metaStyle = computed(() => (metaH.value ? { height: `${metaH.value}px` } : {}))
+function drag(e: MouseEvent): void {
+  const box = root.value?.getBoundingClientRect()
+  const meta = root.value?.querySelector<HTMLElement>('.meta')
+  if (!box || !meta) return
+  const startY = e.clientY
+  const startH = meta.getBoundingClientRect().height
+  const move = (ev: MouseEvent): void => {
+    // keep at least a few lines of each part
+    metaH.value = Math.round(Math.min(box.height - 90, Math.max(70, startH + ev.clientY - startY)))
+  }
+  const up = (): void => {
+    window.removeEventListener('mousemove', move)
+    window.removeEventListener('mouseup', up)
+    document.body.style.cursor = ''
+    try {
+      localStorage.setItem(KEY, String(metaH.value ?? ''))
+    } catch {
+      /* ignore */
+    }
+  }
+  document.body.style.cursor = 'row-resize'
+  window.addEventListener('mousemove', move)
+  window.addEventListener('mouseup', up)
+}
+function resetSplit(): void {
+  metaH.value = null
+  try {
+    localStorage.removeItem(KEY)
+  } catch {
+    /* ignore */
+  }
+}
 
 function copy(text: string): void {
   navigator.clipboard.writeText(text).then(() => toast('복사됨', 'ok'))
@@ -15,8 +60,8 @@ function copy(text: string): void {
 
 <template>
   <div v-if="!d" class="loading">불러오는 중…</div>
-  <div v-else class="info">
-    <div class="meta">
+  <div v-else ref="root" class="info">
+    <div class="meta" :class="{ fixed: metaH }" :style="metaStyle">
       <div class="subject">{{ d.subject }}</div>
       <pre v-if="d.body" class="body">{{ d.body }}</pre>
       <div v-if="refs.length" class="refs">
@@ -40,12 +85,15 @@ function copy(text: string): void {
         <button class="btn small" @click="revert(d.hash)">Revert</button>
       </div>
     </div>
+    <div class="split" title="드래그해서 크기 조절 · 더블클릭하면 원래대로" @mousedown.prevent="drag" @dblclick="resetSplit" />
+    <div class="files">
     <div class="sec-head">
       변경된 파일 {{ d.files.length }}
       <span v-if="d.parents.length > 1" class="dim"> · 첫 번째 부모 기준</span>
     </div>
     <div class="scroll">
       <GitFileList :files="d.files" letter="x" :active-path="git.diff?.path" @open="openCommitDiff(d, $event)" @menu="() => {}" />
+    </div>
     </div>
   </div>
 </template>
@@ -62,9 +110,43 @@ function copy(text: string): void {
   min-height: 0;
 }
 .meta {
+  flex-shrink: 0;
+  /* until the user drags the line: as tall as the message, at most about half the panel */
+  max-height: 55%;
+  overflow: auto;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
   user-select: text;
+}
+.meta.fixed {
+  max-height: none;
+}
+.split {
+  flex-shrink: 0;
+  height: 7px;
+  margin: -3px 0;
+  position: relative;
+  z-index: 2;
+  cursor: row-resize;
+}
+.split::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 1px;
+  background: var(--border);
+}
+.split:hover::after {
+  height: 2px;
+  top: 2.5px;
+  background: var(--accent);
+}
+.files {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .subject {
   font-size: 13.5px;
@@ -78,8 +160,6 @@ function copy(text: string): void {
   color: var(--text-dim);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 160px;
-  overflow: auto;
 }
 .refs {
   display: flex;

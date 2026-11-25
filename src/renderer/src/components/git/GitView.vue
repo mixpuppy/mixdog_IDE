@@ -344,6 +344,11 @@ function startResize(e: MouseEvent): void {
 .panel {
   position: relative;
   flex-shrink: 0;
+  /* narrow windows: the commit list keeps at least half the width */
+  max-width: 50%;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
   border-left: 1px solid var(--border);
   background: var(--surface);
   min-height: 0;

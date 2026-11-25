@@ -52,26 +52,29 @@ const shortcuts: [string, string][] = [
 </template>
 
 <style scoped>
+/* the screen scrolls when the window is short; the content is centred with margin auto
+   (align-items: center would cut off the top instead) */
 .welcome {
   flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--surface);
   overflow: auto;
+  container-type: size;
 }
 .inner {
-  width: 420px;
+  margin: auto;
+  width: min(420px, calc(100% - 40px));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  padding: 40px 0;
+  padding: 32px 0;
 }
 .logo {
   width: 96px;
   height: 96px;
-  margin: -12px 0 -8px;
+  margin-bottom: -6px;
   filter: drop-shadow(0 10px 18px rgba(10, 132, 255, 0.3));
 }
 h1 {
@@ -82,6 +85,7 @@ h1 {
 .sub {
   margin: 0 0 6px;
   color: var(--text-dim);
+  text-align: center;
 }
 .card {
   width: 100%;
@@ -103,6 +107,7 @@ h1 {
   padding: 6px;
   border-radius: 6px;
   text-align: left;
+  min-width: 0;
 }
 .recent:hover {
   background: var(--hover);
@@ -113,8 +118,10 @@ h1 {
 }
 .rname {
   font-weight: 600;
+  flex-shrink: 0;
 }
 .rpath {
+  min-width: 0;
   color: var(--text-faint);
   font-size: 12px;
   overflow: hidden;
@@ -124,6 +131,7 @@ h1 {
 .key-row {
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   padding: 5px 6px;
   color: var(--text-dim);
 }
@@ -136,5 +144,38 @@ kbd {
   border-bottom-width: 2px;
   border-radius: 5px;
   padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* short editor area: smaller logo, shortcuts hidden (recent projects stay) */
+@container (max-height: 620px) {
+  .inner {
+    gap: 10px;
+    padding: 20px 0;
+  }
+  .logo {
+    width: 56px;
+    height: 56px;
+    margin-bottom: -4px;
+  }
+  h1 {
+    font-size: 19px;
+  }
+  .keys {
+    display: none;
+  }
+}
+@container (max-height: 330px) {
+  .logo {
+    display: none;
+  }
+}
+/* narrow: shortcut rows wrap instead of overflowing */
+@container (max-width: 360px) {
+  .key-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 }
 </style>
