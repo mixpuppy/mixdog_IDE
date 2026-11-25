@@ -34,6 +34,19 @@ watch(() => ai.visible, (v) => v && (aiMounted.value = true))
 
 window.api.initialProject().then((p) => p && setProject(p))
 window.api.window.onFocus((f) => (store.windowFocused = f))
+// the page's own focus too: if the window focus event from Windows never arrives, the UI still wakes up
+window.addEventListener('focus', () => {
+  if (!store.windowFocused) window.api.window.diag('focus-without-window-event')
+  store.windowFocused = true
+})
+// a click while the page has no keyboard focus is the "nothing reacts" state: log it for diagnosis
+window.addEventListener(
+  'mousedown',
+  () => {
+    if (!document.hasFocus()) window.api.window.diag('click-without-focus', { windowFocused: store.windowFocused })
+  },
+  true
+)
 window.api.window.onState((s) => (store.maximized = s.maximized))
 
 // Re-detect JDK / build tool / run config whenever the project changes.

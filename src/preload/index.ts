@@ -24,7 +24,9 @@ const api = {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
     onState: (cb: (s: { maximized: boolean }) => void) => ipcRenderer.on('window:state', (_e, s) => cb(s)),
-    onFocus: (cb: (focused: boolean) => void) => ipcRenderer.on('window:focus', (_e, f) => cb(f))
+    onFocus: (cb: (focused: boolean) => void) => ipcRenderer.on('window:focus', (_e, f) => cb(f)),
+    /** a line in the diagnostic log (diag.log in the user data folder) */
+    diag: (what: string, data: Obj = {}) => ipcRenderer.send('window:diag', what, data)
   },
   fs: {
     openFolder: (): Promise<{ path: string; name: string } | null> => invoke('fs:openFolder'),

@@ -13,6 +13,8 @@ npm.cmd run build        # 빌드 (out/)
 - PowerShell 에서 `npm` 이 "스크립트를 실행할 수 없으므로" 오류로 막히면 `npm.cmd` 로 실행하세요 (실행 정책 때문에 `npm.ps1` 이 막힌 것).
 - **개발판과 설치판은 동시에 실행됩니다.** 개발판(`npm.cmd run dev`)은 `%APPDATA%\mixdog-ide-dev`, 설치판(EXE)은 `%APPDATA%\mixdog-ide` 를 따로 씁니다. 그래서 개발하는 동안에도 설치판을 그대로 쓸 수 있습니다. JDK·Tomcat·실행 구성 같은 설정(`%APPDATA%\mixdog-ide\settings.json`)은 둘이 함께 씁니다.
 
+- **진단 로그**: 창 포커스·화면 멈춤·렌더러 종료 같은 문제는 `%APPDATA%\mixdog-ide\diag.log` (개발판은 `mixdog-ide-dev`) 에 기록됩니다. "클릭해도 반응이 없다" 같은 증상이 있으면 이 파일을 확인하세요 (`click-without-focus`, `window.focus.page-unfocused`, `main.stall`, `renderer.unresponsive`).
+
 ### 패치 (포터블로 쓰는 경우)
 
 ```powershell

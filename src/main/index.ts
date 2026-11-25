@@ -12,6 +12,7 @@ import { syncGitWatchers } from './tools/git'
 import { disconnectAll } from './tools/db'
 import './ai/claude'
 import { sanitizeHostClaudeEnv } from './core/env'
+import { diag, watchStalls } from './core/diag'
 import { registerWindow, allWindows, ctxOf, windowsFor, runInScope, scopeOf } from './core/windows'
 
 /** Mica (Windows 11 22H2 = build 22621+); older Windows gets solid colours */
@@ -109,8 +110,24 @@ function createWindow(initialProject: string | null): BrowserWindow {
   win.once('ready-to-show', () => win.show())
   win.on('maximize', () => wc.send('window:state', { maximized: true }))
   win.on('unmaximize', () => wc.send('window:state', { maximized: false }))
-  win.on('focus', () => wc.send('window:focus', true))
-  win.on('blur', () => wc.send('window:focus', false))
+  win.on('focus', () => {
+    wc.send('window:focus', true)
+    // Windows sometimes activates the window without giving the page keyboard focus: keys go nowhere
+    if (!wc.isFocused()) {
+      diag('window.focus.page-unfocused', { id: win.id })
+      wc.focus()
+    }
+    diag('window.focus', { id: win.id })
+  })
+  win.on('blur', () => {
+    wc.send('window:focus', false)
+    diag('window.blur', { id: win.id })
+  })
+  win.on('show', () => diag('window.show', { id: win.id }))
+  win.on('restore', () => diag('window.restore', { id: win.id }))
+  wc.on('unresponsive', () => diag('renderer.unresponsive', { id: win.id }))
+  wc.on('responsive', () => diag('renderer.responsive', { id: win.id }))
+  wc.on('render-process-gone', (_e, d) => diag('renderer.gone', { id: win.id, reason: d.reason, code: d.exitCode }))
   win.on('closed', () => {
     killWindowTerms(wc)
     // the closed window's project may not need its watchers any more
@@ -136,6 +153,11 @@ function createWindow(initialProject: string | null): BrowserWindow {
 }
 
 const senderWin = (e: IpcMainEvent | IpcMainInvokeEvent): BrowserWindow | null => BrowserWindow.fromWebContents(e.sender)
+
+ipcMain.on('window:diag', (e, what: string, data: Record<string, unknown>) => {
+  const w = senderWin(e)
+  diag(`page.${what}`, { id: w?.id, winFocused: w?.isFocused(), ...data })
+})
 
 /* ---------- window controls (traffic lights) - act on the window that asked ---------- */
 ipcMain.on('window:close', (e) => senderWin(e)?.close())
@@ -205,6 +227,8 @@ ipcMain.handle('fs:writeFile', async (e, path: string, content: string) => {
 })
 
 app.whenReady().then(async () => {
+  diag('app.start', { version: app.getVersion() })
+  watchStalls()
   if (removedHostEnv.length) publish('app.env.sanitized', { removed: removedHostEnv.length })
   createWindow(folderArg(process.argv))
   app.on('activate', () => {
