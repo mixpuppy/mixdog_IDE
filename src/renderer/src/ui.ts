@@ -16,7 +16,31 @@ export interface MenuItem {
   sep?: boolean
 }
 
+export interface ErrorAction {
+  label: string
+  primary?: boolean
+  danger?: boolean
+  run: () => unknown
+}
+
+export interface ErrorInfo {
+  title: string
+  /** what happened, in plain words */
+  summary: string
+  /** files / items the error is about */
+  items?: string[]
+  /** what to do about it */
+  hint?: string
+  /** side note (e.g. a harmless warning that was also printed) */
+  note?: string
+  /** the full original output */
+  raw: string
+  actions?: ErrorAction[]
+}
+
 export const ui = reactive({
+  /** error window (full text, explanation, fix buttons) */
+  error: null as ErrorInfo | null,
   /** sheet with several answers, e.g. "이 창 / 새 창 / 취소" */
   choice: null as null | { title: string; message?: string; options: string[]; resolve: (i: number | null) => void },
   menu: null as { x: number; y: number; items: MenuItem[] } | null,
@@ -39,6 +63,11 @@ export function openMenu(e: MouseEvent, items: MenuItem[]): void {
   e.preventDefault()
   e.stopPropagation()
   ui.menu = { x: e.clientX, y: e.clientY, items }
+}
+
+/** Open the error window (stays until closed, text can be selected and copied). */
+export function showError(info: ErrorInfo): void {
+  ui.error = info
 }
 
 export function closeMenu(): void {

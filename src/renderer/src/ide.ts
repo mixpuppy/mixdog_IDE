@@ -26,7 +26,8 @@ export const ide = reactive({
   lastBuild: null as { ok: boolean; ms?: number } | null,
   events: [] as IdeEvent[],
   downloads: {} as Record<string, { pct: number; phase?: string }>,
-  toast: null as { text: string; kind: 'info' | 'error' | 'ok' } | null,
+  /** text = what the toast shows (one line); full = the whole message when it was cut */
+  toast: null as { text: string; kind: 'info' | 'error' | 'ok'; full?: string } | null,
   /** compiler errors / warnings of the last compile (Problems window, editor squiggles) */
   problems: [] as Problem[]
 })
@@ -38,9 +39,14 @@ function push(list: ConsoleLine[], text: string, err = false): void {
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 export function toast(text: string, kind: 'info' | 'error' | 'ok' = 'info'): void {
-  ide.toast = { text, kind }
+  const clean = text.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+  // long / multi-line messages: one line in the toast, the rest in the error window (click)
+  const first = clean.split(/\r?\n/)[0]
+  const long = clean.length > 140 || clean.includes('\n')
+  ide.toast = { text: long ? (first.length > 140 ? first.slice(0, 137) + '…' : first) : clean, kind, full: long ? clean : undefined }
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (ide.toast = null), kind === 'error' ? 7000 : 3500)
+  // an error with more to read stays until it is clicked or replaced
+  if (!(kind === 'error' && long)) toastTimer = setTimeout(() => (ide.toast = null), kind === 'error' ? 9000 : 3500)
 }
 
 export async function loadProjectInfo(): Promise<void> {

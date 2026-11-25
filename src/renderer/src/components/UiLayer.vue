@@ -2,7 +2,7 @@
 /** Global context menu + prompt/confirm sheet (see ui.ts). */
 import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Sheet from './Sheet.vue'
-import { ui, closeMenu, type MenuItem } from '../ui'
+import { ui, closeMenu, type MenuItem, type ErrorAction } from '../ui'
 
 const menuEl = ref<HTMLElement | null>(null)
 const pos = ref({ x: 0, y: 0 })
@@ -42,6 +42,18 @@ function pick(i: MenuItem): void {
   if (i.disabled || i.header) return
   closeMenu()
   i.action?.()
+}
+
+function copyError(): void {
+  const e = ui.error
+  if (!e) return
+  const text = [e.title, e.summary, ...(e.items ?? []).map((x) => '  ' + x), e.hint ?? '', '', e.raw].filter((x) => x !== undefined).join(String.fromCharCode(10))
+  void navigator.clipboard.writeText(text)
+}
+
+function runErrorAction(a: ErrorAction): void {
+  ui.error = null
+  void a.run()
 }
 
 function choose(i: number | null): void {
@@ -100,6 +112,33 @@ onBeforeUnmount(() => {
     </template>
   </Sheet>
 
+  <Sheet v-if="ui.error" :title="ui.error.title" :width="620" @close="ui.error = null">
+    <div class="err">
+      <p class="err-sum">{{ ui.error.summary }}</p>
+      <ul v-if="ui.error.items?.length" class="err-items">
+        <li v-for="it in ui.error.items" :key="it">{{ it }}</li>
+      </ul>
+      <p v-if="ui.error.hint" class="err-hint">{{ ui.error.hint }}</p>
+      <p v-if="ui.error.note" class="err-note">{{ ui.error.note }}</p>
+      <details class="err-raw" :open="!ui.error.hint && !ui.error.items?.length">
+        <summary>원래 메시지 전체</summary>
+        <pre>{{ ui.error.raw }}</pre>
+      </details>
+    </div>
+    <template #footer>
+      <button class="btn" @click="copyError">복사</button>
+      <span class="grow" />
+      <button class="btn" @click="ui.error = null">닫기</button>
+      <button
+        v-for="a in ui.error.actions ?? []"
+        :key="a.label"
+        :class="a.primary ? 'primary-btn' : 'btn'"
+        :style="a.danger ? { color: 'var(--red)' } : undefined"
+        @click="runErrorAction(a)"
+      >{{ a.label }}</button>
+    </template>
+  </Sheet>
+
   <Sheet v-if="ui.ask" :title="ui.ask.title" :width="440" @close="answer(false)">
     <p v-if="ui.ask.message" class="msg">{{ ui.ask.message }}</p>
     <input
@@ -121,6 +160,61 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.err {
+  user-select: text;
+}
+.err-sum {
+  margin: 2px 0 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.err-items {
+  margin: 0 0 10px;
+  padding: 8px 10px 8px 28px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.7;
+  max-height: 140px;
+  overflow: auto;
+}
+.err-hint {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.err-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.err-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.err-raw pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.grow {
+  flex: 1;
+}
 .ctx {
   position: fixed;
   z-index: 300;

@@ -4,8 +4,9 @@
  */
 import { reactive, watch } from 'vue'
 import { store } from './store'
-import { toast } from './ide'
-import { confirmSheet, promptText } from './ui'
+import { toast, ide } from './ide'
+import { confirmSheet, promptText, showError } from './ui'
+import { explainGitError } from './giterrors'
 import { startTask, endTask } from './tasks'
 import { showTool } from './layout'
 
@@ -342,13 +343,65 @@ async function op<T>(label: string | null, fn: () => Promise<T>, okText?: string
     const r = await fn()
     if (okText) toast(okText, 'ok')
     return r
-  } catch {
-    return null // the main process already published an error event (toast)
+  } catch (e) {
+    showGitError(label ?? '작업', e, () => op(label, fn, okText))
+    return null
   } finally {
     if (label) git.busy = null
     if (taskId) endTask(taskId)
     await refresh()
   }
+}
+
+/** Error window instead of the short toast: what happened, which files, buttons to fix it. */
+export function showGitError(label: string, e: unknown, retry?: () => unknown, again?: () => Promise<unknown>): void {
+  // the main process also published the error (short toast): the window replaces it
+  if (ide.toast?.kind === 'error') ide.toast = null
+  const message = e instanceof Error ? e.message : String(e)
+  showError(
+    explainGitError(label, message, {
+      retry,
+      pull: () => pull(),
+      showChanges: () => {
+        store.mainView = 'git'
+        void select(WIP)
+      },
+      stashAndRetry: again ? () => stashAndRetry(label, again) : undefined
+    })
+  )
+}
+
+/** op() for pull / merge / checkout: on "local changes would be overwritten" the error window offers stash + retry */
+async function opRetryable<T>(label: string, fn: () => Promise<T>, okText?: string): Promise<T | null> {
+  const taskId = `git:${label}`
+  git.busy = label
+  git.progress = ''
+  startTask({ id: taskId, title: `Git ${label}`, detail: store.project?.name ?? '' })
+  try {
+    const r = await fn()
+    if (okText) toast(okText, 'ok')
+    return r
+  } catch (e) {
+    showGitError(label, e, () => opRetryable(label, fn, okText), () => op(label, fn, okText))
+    return null
+  } finally {
+    git.busy = null
+    endTask(taskId)
+    await refresh()
+  }
+}
+
+/** keep my edits aside (stash, new files included), run the operation, put the edits back */
+async function stashAndRetry(label: string, run: () => Promise<unknown>): Promise<void> {
+  try {
+    await window.api.git.stashPush(P(), `mixdog 자동 보관 (${label} 전)`)
+  } catch (e) {
+    showGitError('Stash', e)
+    await refresh()
+    return
+  }
+  await run()
+  await op('Stash pop', () => window.api.git.stash(P(), 'pop', 0), '보관했던 내 수정을 다시 적용했습니다')
 }
 
 export const stage = (paths: string[]): Promise<unknown> => op(null, () => window.api.git.stage(P(), paths))
@@ -387,7 +440,7 @@ export async function startAmend(on: boolean): Promise<void> {
 }
 
 export const fetchAll = (): Promise<unknown> => op('Fetch', () => window.api.git.fetch(P()), 'Fetch 완료')
-export const pull = (): Promise<unknown> => op('Pull', () => window.api.git.pull(P()), 'Pull 완료')
+export const pull = (): Promise<unknown> => opRetryable('Pull', () => window.api.git.pull(P()), 'Pull 완료')
 export const push = (force = false): Promise<unknown> => op('Push', () => window.api.git.push(P(), force), 'Push 완료')
 
 export async function forcePush(): Promise<void> {
@@ -396,7 +449,7 @@ export async function forcePush(): Promise<void> {
 
 export async function checkout(target: string): Promise<void> {
   git.compareWith = null // follow the new branch's upstream
-  await op('Checkout', () => window.api.git.checkout(P(), target), `${target} 로 전환됨`)
+  await opRetryable('Checkout', () => window.api.git.checkout(P(), target), `${target} 로 전환됨`)
 }
 
 export async function newBranch(start: string | null = null): Promise<void> {
@@ -426,7 +479,7 @@ export async function deleteBranch(name: string): Promise<void> {
 export async function merge(name: string): Promise<void> {
   const cur = git.status?.branch ?? 'HEAD'
   if (!(await confirmSheet('병합', `'${name}' 을(를) 현재 브랜치 '${cur}' 에 병합할까요?`, '병합'))) return
-  await op('Merge', () => window.api.git.merge(P(), name), '병합 완료')
+  await opRetryable('Merge', () => window.api.git.merge(P(), name), '병합 완료')
 }
 
 export async function abort(): Promise<void> {
