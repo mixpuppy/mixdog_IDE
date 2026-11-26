@@ -102,6 +102,27 @@ export function disposeDoc(path: string): void {
 /** True while the IDE replaces a buffer with the disk version - not a user edit. */
 export const externalReload = { active: false }
 
+/**
+ * Monaco keeps ONE global "hover delegate factory", set by the most recently constructed editor.
+ * The inner editors of a diff editor use a scoped service that is disposed with the diff editor,
+ * so after closing a Git diff the factory points at a dead service. The first suggest list opened
+ * after that fails, and Monaco caches the failure: completion stays broken in that editor.
+ * Constructing a plain editor resets the factory to the global (never disposed) service; a hidden
+ * one is kept alive for that. Call after creating / disposing a diff editor.
+ */
+let keeper: { editor: monaco.editor.IStandaloneCodeEditor; host: HTMLElement } | null = null
+export function resetEditorServices(): void {
+  const host = document.createElement('div')
+  host.style.cssText = 'position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden;visibility:hidden'
+  document.body.appendChild(host)
+  const old = keeper
+  keeper = { editor: monaco.editor.create(host, { model: null, minimap: { enabled: false }, ariaLabel: '' }), host }
+  if (old) {
+    old.editor.dispose()
+    old.host.remove()
+  }
+}
+
 /** The single code editor instance (set by CodeEditor.vue) - used by IDE commands / AI. */
 export const editorRef: { current: monaco.editor.IStandaloneCodeEditor | null } = { current: null }
 

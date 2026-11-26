@@ -5,7 +5,7 @@ import Icon from '../Icon.vue'
 import GitHunks from './GitHunks.vue'
 import { git, stage, unstage, discard, diffPrefs } from '../../git'
 import { openMenu, type MenuItem } from '../../ui'
-import { monaco, currentTheme, languageOf } from '../../monaco'
+import { monaco, currentTheme, languageOf, resetEditorServices } from '../../monaco'
 import { store, openFile } from '../../store'
 
 const host = ref<HTMLElement | null>(null)
@@ -50,11 +50,14 @@ onMounted(() => {
     ignoreTrimWhitespace: diffPrefs.ignoreWs,
     renderSideBySideInlineBreakpoint: 560
   })
+  // don't leave Monaco's global hover factory on the diff editor's scoped services (see monaco.ts)
+  resetEditorServices()
   load()
 })
 onBeforeUnmount(() => {
   editor.value?.dispose()
   models.forEach((m) => m.dispose())
+  resetEditorServices()
 })
 watch(() => [git.diff, git.diffVersion, diffPrefs.mode], load)
 watch(() => diffPrefs.ignoreWs, (v) => editor.value?.updateOptions({ ignoreTrimWhitespace: v }))
