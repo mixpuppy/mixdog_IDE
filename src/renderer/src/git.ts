@@ -427,6 +427,8 @@ export async function commit(): Promise<void> {
   if (r) {
     git.commitMsg = ''
     git.amend = false
+    // the diff that was open belongs to what was just committed: back to the commit graph
+    git.diff = null
     toast(`커밋됨 ${String(r).slice(0, 7)}`, 'ok')
   }
 }
