@@ -212,7 +212,11 @@ const api = {
     setOracleClient: (v: string | null) => dbInvoke('db:setOracleClient', v),
     pickFolder: (title: string) => dbInvoke<string | null>('db:pickFolder', title)
   },
-  openExternal: (url: string) => invoke('shell:openExternal', url)
+  openExternal: (url: string) => invoke('shell:openExternal', url),
+  /** show the file selected in Windows Explorer */
+  reveal: (path: string) => invoke('shell:reveal', path),
+  /** compiled .class of a .java / .kt source (or its package folder), null when not built */
+  classFile: (src: string) => invoke<{ path: string; exact: boolean } | null>('fs:classFile', src)
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -4,6 +4,7 @@ import Icon from './Icon.vue'
 import FileIcon from './FileIcon.vue'
 import { store, closeTab, closeOthers, splitTab, moveTab, unsplit, relativeParts } from '../store'
 import { openMenu, type MenuItem } from '../ui'
+import { toast } from '../ide'
 
 const props = defineProps<{ groupId: number }>()
 const group = computed(() => store.groups.find((g) => g.id === props.groupId))
@@ -19,6 +20,18 @@ function activate(path: string): void {
   store.selectedPath = path
 }
 
+function reveal(path: string): void {
+  void window.api.reveal(path).catch((err: Error) => toast(err.message, 'error'))
+}
+
+/** compiled .class of a Java / Kotlin source in Explorer (Maven target/classes, Gradle build/classes ...) */
+async function revealClass(path: string): Promise<void> {
+  const r = await window.api.classFile(path).catch(() => null)
+  if (!r) return toast('class 파일이 없습니다. 먼저 빌드(컴파일)하세요.', 'error')
+  if (!r.exact) toast('이 클래스는 아직 컴파일되지 않아 패키지 폴더를 엽니다', 'info')
+  void window.api.reveal(r.path)
+}
+
 function menu(e: MouseEvent, path: string): void {
   const i = gi()
   const items: MenuItem[] = [
@@ -31,7 +44,10 @@ function menu(e: MouseEvent, path: string): void {
       .map((g, n) => ({ g, n }))
       .filter(({ n }) => n !== i)
       .map(({ n }) => ({ label: `${n + 1}번 창으로 옮기기`, action: () => moveTab(path, i, n) })),
-    ...(store.groups.length > 1 ? [{ label: '분할 해제 (창 하나로 합치기)', action: () => unsplit(), sep: true }] : [])
+    ...(store.groups.length > 1 ? [{ label: '분할 해제 (창 하나로 합치기)', action: () => unsplit(), sep: true }] : []),
+    { label: '탐색기에서 열기', hint: '파일 위치', action: () => reveal(path), sep: true },
+    ...(/\.(java|kt)$/i.test(path) ? [{ label: 'class 파일 위치 열기', hint: '컴파일 결과', action: () => revealClass(path) }] : []),
+    { label: '경로 복사', action: () => void navigator.clipboard.writeText(path) }
   ]
   openMenu(e, items)
 }

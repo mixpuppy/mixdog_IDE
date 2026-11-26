@@ -1,5 +1,7 @@
 /** IPC handlers for project settings, JDK / Maven / Tomcat, build and run. */
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { existsSync, readFileSync } from 'fs'
+import { join, basename, dirname, sep } from 'path'
 import { publish, history } from './core/events'
 import { getProject, setProject, getTools, setTools, type ProjectSettings } from './core/settings'
 import { listJdks, downloadJdk, detectProjectJava, pickJdk, inspectJdk } from './tools/jdk'
@@ -134,8 +136,36 @@ handle('run:stop', async (path: string) => {
 handle('run:state', async (path: string) => ({ tomcat: tomcatState(path), building: isBuilding(path) }))
 
 handle('shell:openExternal', async (url: string) => {
-  if (/^https?:\/\/localhost[:/]/.test(url)) await shell.openExternal(url)
+  // web pages only (GitLab MR / token pages, the app on localhost); never file: or other schemes
+  if (/^https?:\/\/[^\s]+$/i.test(url)) await shell.openExternal(url)
   return true
+})
+
+/* Explorer: select the file in its folder */
+handle('shell:reveal', async (path: string) => {
+  if (!existsSync(path)) throw new Error(`없는 경로입니다: ${path}`)
+  shell.showItemInFolder(path)
+  return true
+})
+
+/**
+ * The compiled .class of a Java / Kotlin source: package line + file name under the build output
+ * (Maven target/classes, Gradle build/classes/..., IntelliJ out/production, Eclipse bin).
+ * Returns the class file, or its package folder when that exists but the class does not (yet).
+ */
+handle('fs:classFile', async (src: string): Promise<{ path: string; exact: boolean } | null> => {
+  const parts = src.split(/[\\/]/)
+  const at = parts.lastIndexOf('src')
+  if (at < 0) return null
+  const root = parts.slice(0, at).join(sep)
+  const text = readFileSync(src, 'utf-8')
+  const pkg = text.match(/^\s*package\s+([\w.]+)/m)?.[1] ?? ''
+  const name = basename(src).replace(/\.(java|kt)$/i, '')
+  const rel = join(...pkg.split('.').filter(Boolean), `${name}.class`)
+  const outs = ['target/classes', 'build/classes/java/main', 'build/classes/kotlin/main', 'out/production/classes', 'bin', 'target/test-classes', 'build/classes/java/test'].map((d) => join(root, ...d.split('/')))
+  for (const o of outs) if (existsSync(join(o, rel))) return { path: join(o, rel), exact: true }
+  for (const o of outs) if (existsSync(join(o, dirname(rel)))) return { path: join(o, dirname(rel)), exact: false }
+  return null
 })
 
 /* ---------- search ---------- */
