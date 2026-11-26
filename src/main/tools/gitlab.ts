@@ -315,7 +315,8 @@ function statusText(m: GlMr): string {
 
 async function projectFor(projectPath: string): Promise<{ host: string; id: number; remote: string; project: string }> {
   const root = await needRoot(projectPath)
-  const r = await remoteOf(root, null)
+  // the current branch's remote (same as the MR form), origin when that is not a GitLab address
+  const r = await remoteOf(root, 'HEAD').catch(() => remoteOf(root, null))
   const p = await api<{ id: number }>(r.host, `/projects/${enc(r.project)}`)
   return { host: r.host, id: p.id, remote: r.remote, project: r.project }
 }

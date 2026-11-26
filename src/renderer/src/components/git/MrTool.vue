@@ -12,7 +12,7 @@ import { toast } from '../../ide'
 import { confirmSheet } from '../../ui'
 import { git, refresh as refreshGit, showGitView } from '../../git'
 import { openResolver } from '../../conflicts'
-import { openMergeRequestForm } from '../../mr'
+import { mr, openMergeRequestForm } from '../../mr'
 
 interface Item {
   iid: number
@@ -85,7 +85,22 @@ async function loadList(): Promise<void> {
     loading.value = false
   }
 }
-onMounted(loadList)
+onMounted(async () => {
+  await loadList()
+  if (mr.focus) void openFocus()
+})
+/** asked to show one MR (just created, or from the Git view) */
+async function openFocus(): Promise<void> {
+  const iid = mr.focus
+  mr.focus = null
+  if (iid) await openDetail(iid)
+  else detail.value = null
+}
+watch(() => mr.focus, (v) => {
+  if (v === null) return
+  void openFocus()
+  void loadList() // the new MR shows in the list as well
+})
 watch(scope, (s) => {
   try {
     localStorage.setItem('mixdog.mrScope', s)

@@ -23,7 +23,7 @@ export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string 
   terminal: { title: '터미널', icon: 'terminal', hint: 'Alt+F12' },
   problems: { title: '문제', icon: 'warning' },
   debug: { title: '디버그', icon: 'bug', hint: 'Shift+F9' },
-  mr: { title: '머지 리퀘스트', icon: 'branch' }
+  mr: { title: '머지 리퀘스트', icon: 'mergeRequest' }
 }
 
 /** titles that depend on the project, e.g. "Maven" / "Gradle" for the build tool window */

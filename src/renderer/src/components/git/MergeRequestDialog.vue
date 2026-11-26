@@ -6,7 +6,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue'
 import Sheet from '../Sheet.vue'
-import { mr, closeMergeRequest } from '../../mr'
+import { mr, closeMergeRequest, showMergeRequest } from '../../mr'
 import { store } from '../../store'
 import { toast } from '../../ide'
 import { refresh as refreshGit } from '../../git'
@@ -151,6 +151,10 @@ async function create(): Promise<void> {
       squash: squash.value
     })
     toast(`MR !${created.value.iid} 을(를) 만들었습니다`, 'ok')
+    // straight to its screen in the MR tool (approve / review)
+    const iid = created.value.iid
+    closeMergeRequest()
+    void showMergeRequest(iid)
   } catch (e) {
     error.value = (e as Error).message
   } finally {

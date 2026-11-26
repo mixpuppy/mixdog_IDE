@@ -8,6 +8,7 @@ import GitWip from './GitWip.vue'
 import GitCommitInfo from './GitCommitInfo.vue'
 import { git, WIP, toggleBranchPopup, setScope, setCompare, refresh, fetchAll, pull, push, forcePush, newBranch, stashPush, stashAction, abort, initRepo } from '../../git'
 import { store } from '../../store'
+import { showMergeRequest } from '../../mr'
 import { openMenu } from '../../ui'
 
 const st = computed(() => git.status)
@@ -88,6 +89,9 @@ function startResize(e: MouseEvent): void {
         <div class="sep" />
         <button class="tool" title="새 브랜치" @click="newBranch()">
           <Icon name="branch" :size="15" /><span>브랜치</span>
+        </button>
+        <button class="tool" title="머지 리퀘스트 (GitLab) — 목록·승인·병합" @click="showMergeRequest()">
+          <Icon name="mergeRequest" :size="15" /><span>MR</span>
         </button>
         <button class="tool" :disabled="!dirty" title="git stash push -u" @click="stashPush">
           <span class="ico">⊟</span><span>Stash</span>
