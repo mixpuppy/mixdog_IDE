@@ -47,6 +47,12 @@ npm run dist:dir    # 설치 파일 없이 dist\win-unpacked\ 폴더만 (빠른 
 
 특정 폴더를 바로 열기 (개발 모드): `$env:MIXDOG_PROJECT='D:\work\myproj'; npm run dev`
 
+### 배포 방식 (실행 구성)
+
+- **소스 폴더 직접** (기본, 인텔리제이 Smart Tomcat 방식): Tomcat 이 `src/main/webapp` 을 그대로 읽고, `target/classes` 를 `/WEB-INF/classes`, 빌드가 만든 `target/<finalName>/WEB-INF/lib` 를 `/WEB-INF/lib` 로 연결합니다 (Tomcat Context 의 PreResources / PostResources).
+  실행 중에 프로그램이 `src/main/webapp` 아래 저장한 파일(결재 문서·첨부 등)이 바로 열리고, JSP·HTML·JS 수정도 복사 없이 반영됩니다 (JSP 는 Tomcat 이 4초마다 바뀜 확인). 라이브러리 폴더는 처음 한 번과 pom.xml 이 바뀔 때 `war:exploded` 로 만듭니다.
+- **빌드 결과 폴더**: 예전 방식. 빌드가 만든 복사본(`target/<finalName>`)을 배포하고 바뀐 파일만 복사합니다. 배포 대상(.war 등)을 직접 지정할 때도 이 방식을 씁니다. Gradle 처럼 라이브러리 폴더가 없는 프로젝트는 자동으로 이 방식으로 돌아갑니다.
+
 ### 실행 전 빌드 (빠른 빌드 · 오프라인)
 
 실행 구성(Tomcat 설정)의 **빌드 방식**:

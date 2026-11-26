@@ -133,6 +133,13 @@ async function save(andRun = false): Promise<void> {
           <input v-model.number="cfg.debugPort" class="input mono" type="number" style="width: 110px" />
         </div>
         <div class="field">
+          <label>배포 방식</label>
+          <div class="modes">
+            <label class="check"><input v-model="cfg.deployMode" type="radio" value="source" /> 소스 폴더 직접 (src/main/webapp, 인텔리제이 Smart Tomcat 방식)</label>
+            <label class="check"><input v-model="cfg.deployMode" type="radio" value="exploded" /> 빌드 결과 폴더 (target 의 exploded 복사본)</label>
+          </div>
+        </div>
+        <div v-if="cfg.deployMode === 'exploded'" class="field">
           <label>배포 대상</label>
           <input
             v-model="cfg.deployPath"
@@ -162,7 +169,11 @@ async function save(andRun = false): Promise<void> {
         </div>
       </div>
       <p class="hint">
-        빠른 빌드는 clean·war 압축 없이 바뀐 클래스와 웹 파일만 배포 폴더에 복사합니다 (pom.xml 이 바뀌면 배포 폴더를 한 번 새로 만듦).
+        <template v-if="cfg.deployMode !== 'exploded'">
+          소스 폴더 직접: Tomcat 이 src/main/webapp 을 그대로 읽고, 컴파일된 클래스는 target/classes, 라이브러리는 빌드가 만든 WEB-INF/lib 를 연결합니다.
+          실행 중에 프로그램이 저장한 파일(결재 문서·첨부 등)과 고친 JSP·HTML 이 복사 없이 바로 보입니다.<br />
+        </template>
+        빠른 빌드는 clean·war 압축 없이 바뀐 것만 컴파일합니다 (빌드 결과 폴더 방식이면 바뀐 파일만 복사, pom.xml 이 바뀌면 라이브러리 폴더를 한 번 새로 만듦).
         오프라인에서 없는 의존성이 나오면 자동으로 온라인으로 다시 빌드합니다.<br />
         exploded 폴더로 배포하면 JSP 수정은 저장만 해도 바로 반영됩니다. 접속 주소:
         <b>http://localhost:{{ cfg.httpPort }}{{ cfg.contextPath }}</b>

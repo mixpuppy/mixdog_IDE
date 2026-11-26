@@ -96,7 +96,13 @@ export async function fastBuild(projectDir: string, jdkHome: string | null, cfg:
   const stamped = !!exploded && (await fs.readFile(stampFile(exploded), 'utf-8').catch(() => '')) === hash
   const started = Date.now()
 
+  // source deploy: Tomcat reads src/main/webapp and target/classes itself, nothing to copy
+  const direct = cfg.deployMode !== 'exploded' && !cfg.deployPath?.toLowerCase().endsWith('.war') && existsSync(join(projectDir, 'src', 'main', 'webapp'))
   const sync = async (dir: string): Promise<void> => {
+    if (direct) {
+      out(`소스 폴더 직접 배포라 복사할 것이 없습니다 (${((Date.now() - started) / 1000).toFixed(1)}초)`)
+      return
+    }
     const n: SyncCount = { copied: 0, deleted: 0 }
     const classes = join(dir, 'WEB-INF', 'classes')
     if (info.tool === 'maven') {

@@ -28,6 +28,7 @@ export interface RunConfig {
   buildBeforeRun: boolean
   fastBuild: boolean
   deployPath: string | null
+  deployMode: 'source' | 'exploded'
   vmOptions: string
 }
 

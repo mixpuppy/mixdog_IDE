@@ -22,6 +22,13 @@ export interface RunConfig {
   fastBuild: boolean
   /** Exploded webapp dir or .war; null = auto-detect from target/ or build/ */
   deployPath: string | null
+  /**
+   * 'source' (IntelliJ Smart Tomcat): Tomcat serves src/main/webapp directly, with
+   * target/classes mounted as WEB-INF/classes and the built WEB-INF/lib as WEB-INF/lib, so files
+   * the application writes at runtime and edited JSP / HTML are seen at once.
+   * 'exploded': Tomcat serves the copy made by the build (target/<finalName>).
+   */
+  deployMode: 'source' | 'exploded'
   vmOptions: string
 }
 
@@ -80,6 +87,7 @@ export function defaultRunConfig(projectName: string): RunConfig {
     buildBeforeRun: true,
     fastBuild: true,
     deployPath: null,
+    deployMode: 'source',
     vmOptions: '-Xms256m -Xmx1024m'
   }
 }
