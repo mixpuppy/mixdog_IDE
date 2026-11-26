@@ -245,3 +245,24 @@ button {
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
 }
+
+/* conflict resolver: auto-merged / conflict / resolved blocks */
+.monaco-editor .cr-auto {
+  background: rgba(64, 160, 255, 0.16);
+}
+.monaco-editor .cr-conflict {
+  background: rgba(229, 72, 77, 0.2);
+}
+.monaco-editor .cr-resolved {
+  background: rgba(52, 199, 89, 0.16);
+}
+.monaco-editor .cr-mark {
+  background: #e5484d;
+  width: 4px !important;
+  margin-left: 3px;
+}
+.monaco-editor .cr-mark-ok {
+  background: #34c759;
+  width: 4px !important;
+  margin-left: 3px;
+}

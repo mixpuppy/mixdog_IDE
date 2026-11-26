@@ -130,7 +130,19 @@ const api = {
     setToken: (host: string, token: string) => dbInvoke<Obj>('gitlab:setToken', host, token),
     forgetToken: (host: string) => dbInvoke('gitlab:forgetToken', host),
     users: (host: string, projectId: number, search: string) => dbInvoke<Obj[]>('gitlab:users', host, projectId, search),
-    createMr: (p: string, req: unknown) => dbInvoke<{ iid: number; url: string }>('gitlab:createMr', p, req)
+    createMr: (p: string, req: unknown) => dbInvoke<{ iid: number; url: string }>('gitlab:createMr', p, req),
+    list: (p: string, scope: 'review' | 'assigned' | 'mine' | 'all') => dbInvoke<Obj>('gitlab:list', p, scope),
+    detail: (p: string, iid: number) => dbInvoke<Obj>('gitlab:detail', p, iid),
+    approve: (p: string, iid: number, on: boolean, sha?: string) => dbInvoke('gitlab:approve', p, iid, on, sha),
+    merge: (p: string, iid: number, o: { squash: boolean; removeSource: boolean; sha?: string }) => dbInvoke<{ state: string }>('gitlab:merge', p, iid, o),
+    close: (p: string, iid: number) => dbInvoke('gitlab:close', p, iid),
+    prepareMerge: (p: string, source: string, target: string) => dbInvoke<{ branch: string; conflicts: string[]; merged: boolean }>('gitlab:prepareMerge', p, source, target)
+  },
+  /** 3-way conflict resolver */
+  conflicts: {
+    versions: (p: string, path: string) => dbInvoke<Obj>('git:conflict', p, path),
+    resolve: (p: string, path: string, content: string | null) => dbInvoke('git:resolveConflict', p, path, content),
+    finish: (p: string) => dbInvoke<string>('git:finishMerge', p)
   },
   /** Ctrl+click / F12: declarations of the symbol at an offset (text rules, no language server) */
   nav: {
@@ -167,6 +179,7 @@ const api = {
     fetch: (p: string) => invoke<string>('git:fetch', p),
     pull: (p: string) => invoke<string>('git:pull', p),
     push: (p: string, force: boolean) => invoke<string>('git:push', p, force),
+    checkoutSide: (p: string, path: string, side: 'ours' | 'theirs') => dbInvoke('git:checkoutSide', p, path, side),
     stashPush: (p: string, message: string) => invoke('git:stashPush', p, message),
     stash: (p: string, action: 'pop' | 'apply' | 'drop', index: number) => invoke('git:stash', p, action, index),
     reset: (p: string, hash: string, mode: 'soft' | 'mixed' | 'hard') => invoke('git:reset', p, hash, mode),

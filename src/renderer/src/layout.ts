@@ -8,7 +8,7 @@
 import { reactive, watch } from 'vue'
 
 export type DockId = 'left' | 'right' | 'bottom'
-export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'database' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems' | 'debug'
+export type ToolId = 'project' | 'search' | 'git' | 'server' | 'buildtool' | 'database' | 'build' | 'tomcat' | 'events' | 'terminal' | 'problems' | 'debug' | 'mr'
 
 export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string }> = {
   project: { title: '프로젝트', icon: 'folder', hint: 'Alt+1' },
@@ -22,7 +22,8 @@ export const TOOLS: Record<ToolId, { title: string; icon: string; hint?: string 
   events: { title: '이벤트', icon: 'pulse' },
   terminal: { title: '터미널', icon: 'terminal', hint: 'Alt+F12' },
   problems: { title: '문제', icon: 'warning' },
-  debug: { title: '디버그', icon: 'bug', hint: 'Shift+F9' }
+  debug: { title: '디버그', icon: 'bug', hint: 'Shift+F9' },
+  mr: { title: '머지 리퀘스트', icon: 'branch' }
 }
 
 /** titles that depend on the project, e.g. "Maven" / "Gradle" for the build tool window */
@@ -33,7 +34,7 @@ const DEFAULT = {
   docks: {
     left: ['project', 'search', 'git', 'server'] as ToolId[],
     // IntelliJ keeps Maven / Gradle on the right
-    right: ['buildtool', 'database'] as ToolId[],
+    right: ['buildtool', 'database', 'mr'] as ToolId[],
     bottom: ['build', 'tomcat', 'debug', 'events', 'terminal', 'problems'] as ToolId[]
   },
   active: { left: 'project', right: null, bottom: 'build' } as Record<DockId, ToolId | null>,

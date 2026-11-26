@@ -8,8 +8,8 @@
  * when Claude or the terminal runs git.
  */
 import { execFile, spawn } from 'child_process'
-import { watch, existsSync, statSync, readFileSync, type FSWatcher } from 'fs'
-import { join, isAbsolute, resolve } from 'path'
+import { watch, existsSync, statSync, readFileSync, writeFileSync, mkdirSync, type FSWatcher } from 'fs'
+import { join, isAbsolute, resolve, dirname } from 'path'
 import { shell } from 'electron'
 import { publish } from '../core/events'
 import { allWindows } from '../core/windows'
@@ -329,7 +329,7 @@ export async function commitDetail(projectPath: string, hash: string): Promise<C
   }
 }
 
-function parseNameStatus(out: string): FileChange[] {
+export function parseNameStatus(out: string): FileChange[] {
   const p = out.split('\0').filter((s, i, a) => s || i < a.length - 1)
   const files: FileChange[] = []
   for (let i = 0; i < p.length; i++) {
@@ -713,4 +713,102 @@ export function syncGitWatchers(): void {
     gitWatchers.delete(k)
   }
   for (const [k, dir] of open) if (!gitWatchers.has(k)) watchRepo(dir)
+}
+
+/* ------------------------------------------------------------------ conflict resolver */
+
+/** what is being merged in (the "theirs" side), for labels */
+async function incomingName(root: string): Promise<string> {
+  const d = gitDir(root)
+  for (const head of ['MERGE_HEAD', 'REBASE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD']) {
+    if (!existsSync(join(d, head))) continue
+    if (head === 'MERGE_HEAD') {
+      try {
+        const msg = readFileSync(join(d, 'MERGE_MSG'), 'utf-8').split('\n')[0]
+        const m = msg.match(/Merge (?:remote-tracking )?branch(?:es)? '([^']+)'/)
+        if (m) return m[1]
+      } catch {
+        /* no message */
+      }
+    }
+    const n = await git(root, ['name-rev', '--name-only', '--no-undefined', head]).then((s) => s.trim(), () => '')
+    return n || head
+  }
+  return '상대 쪽'
+}
+
+export interface ConflictVersions {
+  path: string
+  /** null: the file does not exist on that side (added / deleted) */
+  base: string | null
+  ours: string | null
+  theirs: string | null
+  binary: boolean
+  oursLabel: string
+  theirsLabel: string
+}
+
+/** The three versions of a conflicted file (index stages 1 base, 2 ours, 3 theirs). */
+export async function conflictVersions(projectPath: string, path: string): Promise<ConflictVersions> {
+  const root = await needRoot(projectPath)
+  const stage = async (n: number): Promise<{ text: string | null; binary: boolean }> => {
+    try {
+      const buf = Buffer.from(await git(root, ['show', `:${n}:${path}`], { raw: true }), 'latin1')
+      if (buf.subarray(0, 8000).includes(0)) return { text: null, binary: true }
+      return { text: buf.toString('utf-8'), binary: false }
+    } catch {
+      return { text: null, binary: false }
+    }
+  }
+  const [b, o, t] = await Promise.all([stage(1), stage(2), stage(3)])
+  const st = await status(projectPath)
+  const branch = st?.branch ?? 'HEAD'
+  // rebase: "ours" is the branch being rebased onto, "theirs" the commit being replayed
+  const rebasing = st?.state === 'REBASING'
+  const incoming = await incomingName(root)
+  return {
+    path,
+    base: b.text,
+    ours: o.text,
+    theirs: t.text,
+    binary: b.binary || o.binary || t.binary,
+    oursLabel: rebasing ? `리베이스 대상 (${incoming})` : `내 쪽 (${branch})`,
+    theirsLabel: rebasing ? `내 커밋 (${branch})` : `가져오는 쪽 (${incoming})`
+  }
+}
+
+/** Save the resolved content (null = delete the file) and mark it resolved (git add / rm). */
+export async function resolveConflict(projectPath: string, path: string, content: string | null, source = 'user'): Promise<void> {
+  const root = await needRoot(projectPath)
+  const full = join(root, path)
+  if (content === null) {
+    await git(root, ['rm', '-q', '--', path]).catch(() => git(root, ['add', '-A', '--', path]))
+  } else {
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, content, 'utf-8')
+    await git(root, ['add', '--', path])
+  }
+  publish('git.conflict.resolved', { path, deleted: content === null }, source)
+}
+
+/** All conflicts resolved: finish the merge / cherry-pick / revert with its prepared message. */
+export async function finishMerge(projectPath: string, source = 'user'): Promise<string> {
+  const root = await needRoot(projectPath)
+  const st = await status(projectPath)
+  if (st?.conflicts.length) throw new GitError(`아직 해결하지 않은 충돌 파일이 ${st.conflicts.length}개 있습니다`)
+  if (st?.state === 'REBASING') {
+    await git(root, ['-c', 'core.editor=true', 'rebase', '--continue'])
+  } else {
+    await git(root, ['commit', '--no-edit'])
+  }
+  publish('git.merge.finish', { state: st?.state ?? null }, source)
+  return (await git(root, ['rev-parse', 'HEAD'])).trim()
+}
+
+/** Binary / whole-file conflicts: take one side as it is (git checkout --ours / --theirs) and stage it. */
+export async function checkoutSide(projectPath: string, path: string, side: 'ours' | 'theirs', source = 'user'): Promise<void> {
+  const root = await needRoot(projectPath)
+  await git(root, ['checkout', `--${side}`, '--', path])
+  await git(root, ['add', '--', path])
+  publish('git.conflict.resolved', { path, side }, source)
 }

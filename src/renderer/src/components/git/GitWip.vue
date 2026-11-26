@@ -6,6 +6,7 @@ import { git, stage, unstage, discard, commit, startAmend, openWipDiff, type Fil
 import { openMenu } from '../../ui'
 import { openFile } from '../../store'
 import { run } from '../../commands'
+import { openResolver } from '../../conflicts'
 
 const st = computed(() => git.status)
 const unstaged = computed(() => st.value?.unstaged ?? [])
@@ -88,16 +89,17 @@ const canCommit = computed(() => !!git.commitMsg.trim() && (git.amend || staged.
     <div v-if="conflicts.length" class="section">
       <div class="sec-head conflict">
         <span>충돌 {{ conflicts.length }}</span>
-        <span class="hint">해결 후 스테이지하세요</span>
+        <span class="hint">파일을 누르면 충돌 해결 화면</span>
+        <button class="link" @click="openResolver(conflicts.map((f) => f.path))">모두 해결…</button>
       </div>
       <GitFileList
         :files="conflicts"
         letter="y"
         action-label="해결됨"
         :active-path="activePath"
-        @open="openFile(full($event.path))"
+        @open="openResolver(conflicts.map((f) => f.path), $event.path)"
         @action="stage([$event.path])"
-        @menu="(e, f) => openMenu(e, [{ label: '에디터에서 열기', action: () => openFile(full(f.path)) }, { label: '해결됨으로 스테이지', action: () => stage([f.path]) }])"
+        @menu="(e, f) => openMenu(e, [{ label: '충돌 해결 화면…', action: () => openResolver(conflicts.map((x) => x.path), f.path) }, { label: '에디터에서 열기', action: () => openFile(full(f.path)) }, { label: '해결됨으로 스테이지', action: () => stage([f.path]) }])"
       />
     </div>
 

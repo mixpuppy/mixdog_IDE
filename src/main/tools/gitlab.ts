@@ -8,7 +8,7 @@
 import { app, net, safeStorage } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { git, GitError, needRoot, splitMessage, webUrl } from './git'
+import { git, GitError, needRoot, splitMessage, webUrl, parseNameStatus, status } from './git'
 import { publish } from '../core/events'
 
 /* ------------------------------------------------------------------ token storage */
@@ -244,4 +244,240 @@ export async function createMr(projectPath: string, req: MrCreate): Promise<{ ii
   const mr = await api<{ iid: number; web_url: string }>(r.host, `/projects/${p.id}/merge_requests`, { method: 'POST', body })
   publish('git.mr.create', { project: r.project, iid: mr.iid, source: r.remoteBranch, target: req.target, url: mr.web_url })
   return { iid: mr.iid, url: mr.web_url }
+}
+
+/* ------------------------------------------------------------------ reviewing merge requests */
+
+export interface MrListItem {
+  iid: number
+  title: string
+  author: string
+  source: string
+  target: string
+  draft: boolean
+  /** plain Korean status: 병합 가능 / 충돌 / 확인 중 ... */
+  status: string
+  conflicts: boolean
+  url: string
+  updated: string
+}
+
+interface GlMr {
+  iid: number
+  title: string
+  description: string
+  author: GlUser
+  assignee: GlUser | null
+  reviewers?: GlUser[]
+  source_branch: string
+  target_branch: string
+  draft?: boolean
+  work_in_progress?: boolean
+  merge_status: string
+  detailed_merge_status?: string
+  has_conflicts: boolean
+  web_url: string
+  updated_at: string
+  sha: string
+  state: string
+  head_pipeline?: { status: string; web_url: string } | null
+  user?: { can_merge: boolean }
+  squash?: boolean
+  force_remove_source_branch?: boolean
+}
+
+/** detailed_merge_status (GitLab 15.6+) / merge_status → Korean */
+function statusText(m: GlMr): string {
+  const map: Record<string, string> = {
+    mergeable: '병합 가능',
+    conflict: '충돌',
+    need_rebase: '리베이스 필요',
+    not_approved: '승인 필요',
+    ci_must_pass: '파이프라인 통과 필요',
+    ci_still_running: '파이프라인 실행 중',
+    draft_status: 'Draft',
+    discussions_not_resolved: '토론 미해결',
+    blocked_status: '다른 MR 에 막힘',
+    checking: '확인 중',
+    unchecked: '확인 전',
+    not_open: '닫힘',
+    requested_changes: '변경 요청됨'
+  }
+  if (m.state === 'merged') return '병합됨'
+  if (m.state === 'closed') return '닫힘'
+  const d = m.detailed_merge_status
+  if (d && map[d]) return map[d]
+  if (m.has_conflicts) return '충돌'
+  if (m.merge_status === 'can_be_merged') return '병합 가능'
+  if (m.merge_status === 'cannot_be_merged') return '병합 불가'
+  return '확인 중'
+}
+
+async function projectFor(projectPath: string): Promise<{ host: string; id: number; remote: string; project: string }> {
+  const root = await needRoot(projectPath)
+  const r = await remoteOf(root, null)
+  const p = await api<{ id: number }>(r.host, `/projects/${enc(r.project)}`)
+  return { host: r.host, id: p.id, remote: r.remote, project: r.project }
+}
+
+/** scope: review = 나에게 리뷰 요청 · assigned = 내가 담당 · mine = 내가 만든 · all = 열린 MR 전부 */
+export async function listMrs(projectPath: string, scope: 'review' | 'assigned' | 'mine' | 'all'): Promise<{ host: string; me: GlUser; items: MrListItem[] }> {
+  const p = await projectFor(projectPath)
+  const me = await api<GlUser>(p.host, '/user')
+  const filter = scope === 'review' ? `&reviewer_id=${me.id}` : scope === 'assigned' ? `&assignee_id=${me.id}` : scope === 'mine' ? `&author_id=${me.id}` : ''
+  const list = await api<GlMr[]>(p.host, `/projects/${p.id}/merge_requests?state=opened&per_page=50&order_by=updated_at${filter}`)
+  return {
+    host: p.host,
+    me,
+    items: list.map((m) => ({
+      iid: m.iid,
+      title: m.title,
+      author: m.author?.name ?? '',
+      source: m.source_branch,
+      target: m.target_branch,
+      draft: !!(m.draft ?? m.work_in_progress),
+      status: statusText(m),
+      conflicts: m.has_conflicts || m.detailed_merge_status === 'conflict',
+      url: m.web_url,
+      updated: m.updated_at
+    }))
+  }
+}
+
+export interface MrDetail extends MrListItem {
+  description: string
+  assignee: string | null
+  reviewers: string[]
+  sha: string
+  pipeline: string | null
+  canMerge: boolean
+  approvedBy: string[]
+  approvedByMe: boolean
+  /** approvals still needed (Premium rules), null when the server does not say */
+  approvalsLeft: number | null
+  squash: boolean
+  removeSource: boolean
+  /** changed files, from the local repository (after a fetch) */
+  files: { path: string; from?: string; x: string }[]
+  base: string | null
+  head: string | null
+  filesError?: string
+  remote: string
+}
+
+export async function mrDetail(projectPath: string, iid: number): Promise<MrDetail> {
+  const root = await needRoot(projectPath)
+  const p = await projectFor(projectPath)
+  const me = await api<GlUser>(p.host, '/user')
+  const m = await api<GlMr>(p.host, `/projects/${p.id}/merge_requests/${iid}`)
+  let approvedBy: string[] = []
+  let approvedByMe = false
+  let approvalsLeft: number | null = null
+  try {
+    const a = await api<{ approved_by: { user: GlUser }[]; approvals_left?: number }>(p.host, `/projects/${p.id}/merge_requests/${iid}/approvals`)
+    approvedBy = a.approved_by.map((x) => x.user.name)
+    approvedByMe = a.approved_by.some((x) => x.user.id === me.id)
+    approvalsLeft = typeof a.approvals_left === 'number' ? a.approvals_left : null
+  } catch {
+    /* approvals API not available on this server */
+  }
+  // changed files: compare the remote branches locally (merge-base..source), like GitLab's "Changes"
+  let files: MrDetail['files'] = []
+  let base: string | null = null
+  let head: string | null = null
+  let filesError: string | undefined
+  try {
+    await git(root, ['fetch', '--no-tags', p.remote, m.source_branch, m.target_branch])
+    head = `${p.remote}/${m.source_branch}`
+    base = (await git(root, ['merge-base', `${p.remote}/${m.target_branch}`, head])).trim()
+    files = parseNameStatus(await git(root, ['diff', '--name-status', '-z', '-M', base, head])).map((f) => ({ path: f.path, from: f.from, x: f.x }))
+  } catch (e) {
+    filesError = `변경 파일을 가져오지 못했습니다: ${(e as Error).message}`
+  }
+  return {
+    iid: m.iid,
+    title: m.title,
+    author: m.author?.name ?? '',
+    source: m.source_branch,
+    target: m.target_branch,
+    draft: !!(m.draft ?? m.work_in_progress),
+    status: statusText(m),
+    conflicts: m.has_conflicts || m.detailed_merge_status === 'conflict',
+    url: m.web_url,
+    updated: m.updated_at,
+    description: m.description ?? '',
+    assignee: m.assignee?.name ?? null,
+    reviewers: (m.reviewers ?? []).map((r) => r.name),
+    sha: m.sha,
+    pipeline: m.head_pipeline?.status ?? null,
+    canMerge: m.user?.can_merge ?? true,
+    approvedBy,
+    approvedByMe,
+    approvalsLeft,
+    squash: !!m.squash,
+    removeSource: !!m.force_remove_source_branch,
+    files,
+    base,
+    head,
+    filesError,
+    remote: p.remote
+  }
+}
+
+export async function approveMr(projectPath: string, iid: number, approve: boolean, sha?: string): Promise<void> {
+  const p = await projectFor(projectPath)
+  await api(p.host, `/projects/${p.id}/merge_requests/${iid}/${approve ? 'approve' : 'unapprove'}`, { method: 'POST', body: approve && sha ? { sha } : {} })
+  publish(approve ? 'git.mr.approve' : 'git.mr.unapprove', { project: p.project, iid })
+}
+
+export async function mergeMr(projectPath: string, iid: number, opts: { squash: boolean; removeSource: boolean; sha?: string }): Promise<{ state: string }> {
+  const p = await projectFor(projectPath)
+  const r = await api<{ state: string }>(p.host, `/projects/${p.id}/merge_requests/${iid}/merge`, {
+    method: 'PUT',
+    body: { squash: opts.squash, should_remove_source_branch: opts.removeSource, ...(opts.sha ? { sha: opts.sha } : {}) }
+  })
+  publish('git.mr.merge', { project: p.project, iid, state: r.state })
+  return { state: r.state }
+}
+
+export async function closeMr(projectPath: string, iid: number): Promise<void> {
+  const p = await projectFor(projectPath)
+  await api(p.host, `/projects/${p.id}/merge_requests/${iid}`, { method: 'PUT', body: { state_event: 'close' } })
+  publish('git.mr.close', { project: p.project, iid })
+}
+
+/**
+ * Resolve an MR's conflicts locally (what IntelliJ does): bring the source branch up to date,
+ * merge the target branch into it, and return the conflicted files. After they are resolved the
+ * merge is committed and pushed, and GitLab sees the MR as mergeable.
+ */
+export async function prepareMrMerge(projectPath: string, source: string, target: string): Promise<{ branch: string; conflicts: string[]; merged: boolean }> {
+  const root = await needRoot(projectPath)
+  const st = await status(projectPath)
+  if (!st) throw new GitError('Git 저장소가 아닙니다')
+  if (st.state) throw new GitError(`이미 진행 중인 작업이 있습니다 (${st.state}). 먼저 끝내거나 취소하세요.`)
+  if (st.staged.length || st.unstaged.some((f) => f.x !== '?')) {
+    throw new GitError('커밋하지 않은 변경이 있습니다. 커밋하거나 스태시한 뒤 다시 시도하세요 (충돌 해결을 위해 소스 브랜치로 전환합니다).')
+  }
+  const { remote } = await remoteOf(root, null)
+  await git(root, ['fetch', '--no-tags', remote, source, target])
+  const local = await git(root, ['rev-parse', '--verify', '-q', `refs/heads/${source}`]).then(() => true, () => false)
+  if (local) {
+    await git(root, ['checkout', source])
+    // the remote branch may have newer commits (someone else pushed): take them first
+    await git(root, ['merge', '--ff-only', `${remote}/${source}`]).catch(() => {
+      throw new GitError(`로컬 '${source}' 와 원격 브랜치가 서로 다른 커밋을 갖고 있습니다. 먼저 Pull 로 맞춘 뒤 다시 시도하세요.`)
+    })
+  } else {
+    await git(root, ['checkout', '-b', source, '--track', `${remote}/${source}`])
+  }
+  publish('git.mr.resolve', { source, target })
+  try {
+    await git(root, ['merge', '--no-ff', '--no-edit', `${remote}/${target}`])
+    return { branch: source, conflicts: [], merged: true }
+  } catch (e) {
+    const after = await status(projectPath)
+    if (after?.conflicts.length) return { branch: source, conflicts: after.conflicts.map((f) => f.path), merged: false }
+    throw e
+  }
 }

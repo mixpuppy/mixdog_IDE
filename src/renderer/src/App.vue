@@ -20,6 +20,7 @@ import { run } from './commands'
 import { ui } from './ui'
 import { dbg, resume, stepOver, stepInto, stepOut } from './debug'
 import { mr } from './mr'
+import { conflictUi } from './conflicts'
 import './closeguard'
 const BranchPopup = defineAsyncComponent(() => import('./components/git/BranchPopup.vue'))
 const TaskList = defineAsyncComponent(() => import('./components/TaskList.vue'))
@@ -30,6 +31,7 @@ const RunConfigDialog = defineAsyncComponent(() => import('./components/RunConfi
 const ProjectSettingsDialog = defineAsyncComponent(() => import('./components/ProjectSettingsDialog.vue'))
 const ConnectionDialog = defineAsyncComponent(() => import('./components/db/ConnectionDialog.vue'))
 const MergeRequestDialog = defineAsyncComponent(() => import('./components/git/MergeRequestDialog.vue'))
+const ConflictResolver = defineAsyncComponent(() => import('./components/git/ConflictResolver.vue'))
 
 /** Claude panel: created the first time it is opened, then kept (its sessions live in it) */
 const aiMounted = ref(ai.visible)
@@ -165,6 +167,7 @@ onBeforeUnmount(() => {
     <RunConfigDialog v-if="store.dialog === 'run' && ide.info" />
     <ConnectionDialog v-if="store.dialog === 'db'" />
     <MergeRequestDialog v-if="mr.req && store.project" />
+    <ConflictResolver v-if="conflictUi.open && store.project" />
     <Toast />
     <BranchPopup v-if="branchPopup.open" />
     <TaskList v-if="tasks.open" />
