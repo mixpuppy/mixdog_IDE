@@ -277,7 +277,9 @@ export async function log(projectPath: string, limit = 400, scope: 'all' | 'curr
   const upstream = await git(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).then((s) => s.trim(), () => null)
   let compare = compareWith || upstream
   if (compare && !(await git(root, ['rev-parse', '--verify', '-q', `${compare}^{commit}`]).then(() => true, () => false))) compare = null
-  const fmt = ['%H', '%P', '%an', '%ae', '%at', '%s'].join(US) + RS
+  // %B (raw message) instead of %s: git's %s joins the whole first paragraph into one line, so a
+  // message with lines right under the title ("title\n-. item") would show as one long subject
+  const fmt = ['%H', '%P', '%an', '%ae', '%at', '%B'].join(US) + RS
   const revs = scope === 'current' ? ['HEAD', ...(compare ? [compare] : [])] : ['--branches', '--remotes', '--tags', 'HEAD']
   const [out, outgoing, incoming, counts] = await Promise.all([
     git(root, ['log', ...revs, '--topo-order', `-n${limit}`, `--format=${fmt}`, '--']),
@@ -291,8 +293,8 @@ export async function log(projectPath: string, limit = 400, scope: 'all' | 'curr
     .map((r) => r.replace(/^\n/, ''))
     .filter(Boolean)
     .map((r) => {
-      const [hash, parents, author, email, time, subject] = r.split(US)
-      return { hash, parents: parents ? parents.split(' ') : [], author, email, time: Number(time) * 1000, subject }
+      const [hash, parents, author, email, time, message] = r.split(US)
+      return { hash, parents: parents ? parents.split(' ') : [], author, email, time: Number(time) * 1000, subject: splitMessage(message ?? '').subject }
     })
   const lines = (t: string): string[] => t.split('\n').map((x) => x.trim()).filter(Boolean)
   return { commits, head, compare, outgoing: lines(outgoing), incoming: lines(incoming), ahead: ahead || 0, behind: behind || 0 }
@@ -305,18 +307,25 @@ export interface CommitDetail extends Commit {
   files: FileChange[]
 }
 
+/** First line = title, the rest = body (lines kept as typed, even without a blank line after the title). */
+export function splitMessage(raw: string): { subject: string; body: string } {
+  const lines = raw.replace(/\r/g, '').replace(/^\n+|\s+$/g, '').split('\n')
+  return { subject: (lines[0] ?? '').trim(), body: lines.slice(1).join('\n').replace(/^\n+/, '').trimEnd() }
+}
+
 export async function commitDetail(projectPath: string, hash: string): Promise<CommitDetail> {
   const root = await needRoot(projectPath)
-  const fmt = ['%H', '%P', '%an', '%ae', '%at', '%cn', '%ct', '%s', '%b'].join(US)
+  const fmt = ['%H', '%P', '%an', '%ae', '%at', '%cn', '%ct', '%B'].join(US)
   const meta = await git(root, ['show', '-s', `--format=${fmt}`, hash])
-  const [h, parents, author, email, time, committer, ctime, subject, body] = meta.split(US)
+  const [h, parents, author, email, time, committer, ctime, message] = meta.split(US)
+  const { subject, body } = splitMessage(message ?? '')
   const ps = parents ? parents.split(' ') : []
   // merge commits: changes relative to the first parent (what the merge brought in)
   const args = ps.length > 1 ? ['diff', '--name-status', '-z', '-M', ps[0], h] : ['diff-tree', '-r', '-z', '-M', '--root', '--no-commit-id', '--name-status', h]
   const files = parseNameStatus(await git(root, args))
   return {
     hash: h, parents: ps, author, email, time: Number(time) * 1000, subject,
-    body: (body ?? '').trim(), committer, committerTime: Number(ctime) * 1000, files
+    body, committer, committerTime: Number(ctime) * 1000, files
   }
 }
 
