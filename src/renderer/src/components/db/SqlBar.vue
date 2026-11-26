@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Thin bar above a .sql editor: which connection it runs on, run / run all / stop. */
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import Sheet from '../Sheet.vue'
 import Icon from '../Icon.vue'
 import { db, loadConnections, connIdOf, setSqlConn, isConsole, runAll, runFromEditor, stopQuery, newConnection, kindLabel, txOf, setManualCommit, commitTx, rollbackTx } from '../../db'
@@ -45,9 +45,20 @@ function autosave(): void {
   })
 }
 
+/* show the connection's commit mode (it may be saved as manual) before anything runs */
+async function loadTx(id: string | null): Promise<void> {
+  if (!id || db.tx[id]) return
+  try {
+    db.tx[id] = await window.api.db.tx(id)
+  } catch {
+    /* connection removed */
+  }
+}
+
 onMounted(async () => {
   registerSqlCompletion()
   if (!db.loaded) await loadConnections()
+  void loadTx(connIdOf(props.path))
   if (!isConsole(props.path)) return
   sub = docs.get(props.path)?.model.onDidChangeContent(() => {
     clearTimeout(saveTimer)
@@ -67,6 +78,7 @@ const conn = computed(() => db.conns.find((c) => c.id === connId.value))
 const running = computed(() => !!db.results[props.path]?.running)
 const fixed = computed(() => isConsole(props.path))
 const tx = computed(() => txOf(connId.value))
+watch(connId, (id) => void loadTx(id))
 
 function pick(e: Event): void {
   const v = (e.target as HTMLSelectElement).value

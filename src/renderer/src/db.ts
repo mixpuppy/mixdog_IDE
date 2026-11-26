@@ -29,6 +29,7 @@ export interface DbConn {
   savePassword: boolean
   readOnly: boolean
   encrypt?: boolean
+  manualCommit?: boolean
   hasPassword?: boolean
   connected?: boolean
 }

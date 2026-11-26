@@ -35,6 +35,8 @@ export interface DbConn {
   readOnly: boolean
   /** MSSQL: encrypt the connection (Azure needs it; on-premise servers often have no valid cert) */
   encrypt?: boolean
+  /** manual commit mode, remembered across IDE restarts */
+  manualCommit?: boolean
 }
 
 export interface DbColumn {
@@ -154,6 +156,11 @@ export async function saveConnection(conn: DbConn, password: string | null): Pro
   const f = load()
   const c: DbConn = { ...conn, id: conn.id || randomUUID(), name: conn.name.trim() || `${conn.kind}@${conn.host}`, port: Number(conn.port) || DEFAULT_PORT[conn.kind] }
   const i = f.connections.findIndex((x) => x.id === c.id)
+  // the commit mode is set from the SQL bar, not the dialog: keep it
+  if (i >= 0 && f.connections[i].manualCommit) c.manualCommit = true
+  else delete c.manualCommit
+  delete (c as Partial<DbConn> & { hasPassword?: boolean; connected?: boolean }).hasPassword
+  delete (c as Partial<DbConn> & { hasPassword?: boolean; connected?: boolean }).connected
   if (i >= 0) f.connections[i] = c
   else f.connections.push(c)
   if (!c.savePassword) delete f.secrets[c.id]
@@ -647,7 +654,18 @@ const addPending = (id: string, st: PendingStatement): void => {
   pending.set(id, list)
 }
 
-export const txState = (id: string): TxState => ({ manual: manual.has(id), pending: pending.has(id), count: pending.get(id)?.length ?? 0 })
+/** connections saved with manual commit start in manual commit (read once from databases.json) */
+let manualLoaded = false
+function loadManual(): void {
+  if (manualLoaded) return
+  manualLoaded = true
+  for (const c of load().connections) if (c.manualCommit) manual.add(c.id)
+}
+
+export const txState = (id: string): TxState => {
+  loadManual()
+  return { manual: manual.has(id), pending: pending.has(id), count: pending.get(id)?.length ?? 0 }
+}
 export const pendingStatements = (id: string): PendingStatement[] => pending.get(id) ?? []
 
 /** '?' binds filled in with the values, for showing a grid save as plain SQL */
@@ -729,6 +747,7 @@ export async function runQuery(id: string, sql: string, opts: { limit?: number; 
   const limit = Math.max(1, Math.min(opts.limit ?? 500, 100000))
   if ((c.readOnly || opts.readOnly) && !isReadOnly(sql))
     throw new Error(c.readOnly ? `'${c.name}' 은(는) 읽기 전용 연결입니다. 조회(SELECT) 문만 실행할 수 있습니다.` : '조회(SELECT) 문만 실행할 수 있습니다.')
+  loadManual()
   const s = await session(id, opts.password)
   const t0 = Date.now()
   // COMMIT / ROLLBACK typed in the console: same as the toolbar buttons (keeps the pending state right)
@@ -772,6 +791,15 @@ export async function runQuery(id: string, sql: string, opts: { limit?: number; 
 
 /** Manual / auto commit. Switching to auto commits what is pending (IntelliJ does the same). */
 export async function setManualCommit(id: string, on: boolean): Promise<TxState> {
+  loadManual()
+  // remember the choice in the connection settings (written directly: saveConnection would disconnect)
+  const f = load()
+  const conn = f.connections.find((x) => x.id === id)
+  if (conn && !!conn.manualCommit !== on) {
+    if (on) conn.manualCommit = true
+    else delete conn.manualCommit
+    save(f)
+  }
   if (on) manual.add(id)
   else {
     manual.delete(id)
@@ -821,6 +849,7 @@ const SAVEPOINT: Record<DbKind, [string, string]> = {
 export async function saveChanges(id: string, statements: DbStatement[], password?: string | null): Promise<{ affected: number; tx: TxState }> {
   const c = getConnection(id)
   if (c.readOnly) throw new Error(`'${c.name}' 은(는) 읽기 전용 연결입니다.`)
+  loadManual()
   const s = await session(id, password)
   const isManual = manual.has(id)
   let affected = 0
