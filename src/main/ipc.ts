@@ -204,6 +204,7 @@ dbHandle('db:save-changes', async (id: string, statements: D.DbStatement[], pass
 dbHandle('db:tx', async (id: string) => D.txState(id))
 dbHandle('db:setManual', async (id: string, on: boolean) => D.setManualCommit(id, on))
 dbHandle('db:commit', async (id: string) => D.commit(id))
+dbHandle('db:pending', async (id: string) => D.pendingStatements(id))
 dbHandle('db:rollback', async (id: string) => D.rollback(id))
 dbHandle('db:consolesDir', async () => D.consolesDir())
 dbHandle('db:consoleFile', async (id: string) => D.consoleFile(id))

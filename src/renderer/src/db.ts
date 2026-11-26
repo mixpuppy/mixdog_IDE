@@ -50,6 +50,8 @@ export interface DbColumn {
 export interface TxState {
   manual: boolean
   pending: boolean
+  /** statements waiting for commit / rollback */
+  count?: number
 }
 
 export interface DbResult {

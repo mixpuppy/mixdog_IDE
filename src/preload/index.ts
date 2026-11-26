@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 /* Shared shapes (kept loose here; the renderer has typed copies in types.ts) */
 type Obj = Record<string, unknown>
-type TxState = { manual: boolean; pending: boolean }
+type TxState = { manual: boolean; pending: boolean; count: number }
 
 const invoke = <T = unknown>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>
@@ -183,6 +183,7 @@ const api = {
     tx: (id: string) => dbInvoke<TxState>('db:tx', id),
     setManual: (id: string, on: boolean) => dbInvoke<TxState>('db:setManual', id, on),
     commit: (id: string) => dbInvoke<TxState>('db:commit', id),
+    pending: (id: string) => dbInvoke<{ sql: string; at: number; affected: number | null; from: 'console' | 'grid' }[]>('db:pending', id),
     rollback: (id: string) => dbInvoke<TxState>('db:rollback', id),
     consolesDir: () => dbInvoke<string>('db:consolesDir'),
     consoleFile: (id: string) => dbInvoke<string>('db:consoleFile', id),

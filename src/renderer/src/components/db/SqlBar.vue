@@ -1,11 +1,34 @@
 <script setup lang="ts">
 /** Thin bar above a .sql editor: which connection it runs on, run / run all / stop. */
-import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import Sheet from '../Sheet.vue'
 import Icon from '../Icon.vue'
 import { db, loadConnections, connIdOf, setSqlConn, isConsole, runAll, runFromEditor, stopQuery, newConnection, kindLabel, txOf, setManualCommit, commitTx, rollbackTx } from '../../db'
 import { editorRef, docs } from '../../monaco'
 import { tabsOf } from '../../store'
 import { registerSqlCompletion } from '../../dbcomplete'
+
+/* pending statements (manual commit): count in the bar, list on click (DBeaver "pending transactions") */
+interface Pending {
+  sql: string
+  at: number
+  affected: number | null
+  from: 'console' | 'grid'
+}
+const pendingOpen = ref(false)
+const pendingList = ref<Pending[]>([])
+async function showPending(): Promise<void> {
+  const id = connId.value
+  if (!id) return
+  pendingList.value = await window.api.db.pending(id).catch(() => [])
+  pendingOpen.value = true
+}
+const hhmmss = (t: number): string => new Date(t).toLocaleTimeString()
+async function finish(commit: boolean): Promise<void> {
+  const id = connId.value
+  pendingOpen.value = false
+  if (id) await (commit ? commitTx(id) : rollbackTx(id))
+}
 
 const props = defineProps<{ path: string }>()
 
@@ -92,14 +115,84 @@ async function runCurrent(): Promise<void> {
         <button class="txbtn ok" :disabled="!tx.pending || running" title="커밋 (변경 확정)" @click="commitTx(conn.id)"><Icon name="check" :size="12" />커밋</button>
         <button class="txbtn" :disabled="!tx.pending || running" title="롤백 (변경 취소)" @click="rollbackTx(conn.id)"><Icon name="undo" :size="12" />롤백</button>
       </template>
-      <span v-if="tx.pending" class="pend" title="커밋하지 않은 변경이 있습니다">● 커밋 대기</span>
+      <button v-if="tx.pending" class="pend" title="커밋 대기 중인 쿼리 보기" @click="showPending">● 커밋 대기 {{ tx.count ?? '' }}</button>
     </template>
     <span v-if="conn" class="meta">{{ kindLabel(conn.kind) }} · {{ conn.user }}@{{ conn.host }}<template v-if="conn.readOnly"> · 읽기 전용</template></span>
     <span v-if="running" class="busy">실행 중…</span>
   </div>
+  <Sheet v-if="pendingOpen" :title="`커밋 대기 중인 쿼리 ${pendingList.length}개`" :width="720" @close="pendingOpen = false">
+    <p class="pnote">{{ conn?.name }} · 아직 확정되지 않았습니다. [커밋] 하면 확정되고, [롤백] 하면 모두 취소됩니다.</p>
+    <div class="plist">
+      <div v-if="!pendingList.length" class="pnone">대기 중인 쿼리가 없습니다.</div>
+      <div v-for="(p, i) in pendingList" :key="i" class="pitem">
+        <div class="phead">
+          <span class="pno">{{ i + 1 }}</span>
+          <span class="ptime">{{ hhmmss(p.at) }}</span>
+          <span class="pfrom">{{ p.from === 'grid' ? '결과 표 수정' : '콘솔' }}</span>
+          <span v-if="p.affected !== null" class="paff">{{ p.affected }}행</span>
+        </div>
+        <pre class="psql">{{ p.sql }}</pre>
+      </div>
+    </div>
+    <template #footer>
+      <button class="btn" @click="pendingOpen = false">닫기</button>
+      <button class="btn" @click="finish(false)">롤백</button>
+      <button class="primary-btn" @click="finish(true)">커밋</button>
+    </template>
+  </Sheet>
 </template>
 
 <style scoped>
+.pnote {
+  margin: 2px 0 10px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+.plist {
+  max-height: 52vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pnone {
+  color: var(--text-faint);
+  padding: 10px 0;
+}
+.pitem {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.phead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+.pno {
+  font-weight: 700;
+  color: var(--text);
+}
+.paff {
+  margin-left: auto;
+  color: #d9a400;
+}
+.psql {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
 .sqlbar {
   height: 30px;
   flex-shrink: 0;
@@ -190,6 +283,9 @@ button:disabled {
 }
 .txbtn.ok {
   color: var(--green);
+}
+.pend:hover {
+  text-decoration: underline;
 }
 .pend {
   color: #d9a400;

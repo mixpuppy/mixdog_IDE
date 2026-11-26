@@ -44,6 +44,31 @@ async function resolve(id: string, current: string, ref: TableRef): Promise<{ sc
   }
 }
 
+/**
+ * Metadata that isn't ready within `ms` must not hold the list back: return the fallback now
+ * (keywords / what is cached), the request keeps running and fills the cache for the next keystroke.
+ * A connection that silently died on the network would otherwise block completion completely.
+ */
+let partial = false
+function soon<T>(p: Promise<T>, fallback: T, ms = 1500): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => {
+      partial = true
+      resolve(fallback)
+    }, ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      () => {
+        clearTimeout(t)
+        resolve(fallback)
+      }
+    )
+  })
+}
+
 let registered = false
 
 export function registerSqlCompletion(): void {
@@ -52,6 +77,7 @@ export function registerSqlCompletion(): void {
   monaco.languages.registerCompletionItemProvider('sql', {
     triggerCharacters: ['.'],
     provideCompletionItems: async (model, pos) => {
+      partial = false
       const path = pathOf(model)
       const id = path ? connIdOf(path) : null
       const c = id ? connOf(id) : undefined
@@ -77,15 +103,9 @@ export function registerSqlCompletion(): void {
       // after "FROM a," the next name is a table as well
       const tableCtx = TABLE_CTX.test(lastKw) || /\bfrom\b[^;()]*,\s*$/i.test(bare) && !/\b(where|on|set|group|order)\b[^;]*$/i.test(bare.slice(bare.search(/\bfrom\b[^;]*$/i)))
 
-      const ready = !!(c && id && (await connectQuietly(id)))
+      const ready = !!(c && id && (await soon(connectQuietly(id), false, 2000)))
       let current = ''
-      if (ready) {
-        try {
-          current = (await schemasOf(id!)).current
-        } catch {
-          /* metadata not available: keywords only */
-        }
-      }
+      if (ready) current = (await soon(schemasOf(id!), null))?.current ?? ''
       const kind = c?.kind ?? 'mysql'
 
       const tableItem = (o: DbObject, schema: string | null, sort: string): languages.CompletionItem => ({
@@ -100,9 +120,9 @@ export function registerSqlCompletion(): void {
       })
 
       const columnItems = async (ref: TableRef, sort: string): Promise<void> => {
-        const t = await resolve(id!, current, ref)
+        const t = await soon(resolve(id!, current, ref), null)
         if (!t) return
-        const cols = await columnsOf(id!, t.schema, t.obj.name).catch(() => [])
+        const cols = await soon(columnsOf(id!, t.schema, t.obj.name), [])
         for (const col of cols) {
           items.push({
             label: { label: col.name, detail: ` ${col.type.toLowerCase()}${col.pk ? ' PK' : ''}`, description: col.comment || t.obj.name },
@@ -119,35 +139,36 @@ export function registerSqlCompletion(): void {
 
       if (qual) {
         // alias. / table. → columns · schema. → tables
-        if (!ready) return { suggestions: [] }
+        if (!ready) return { suggestions: [], incomplete: partial }
         const q = unquote(qual).toLowerCase()
         const refs = tableRefs(stmt)
         const ref = refs.find((r) => r.alias?.toLowerCase() === q) ?? refs.find((r) => r.name.toLowerCase() === q)
         if (ref) await columnItems(ref, '0')
         else {
-          const { schemas } = await schemasOf(id!).catch(() => ({ schemas: [] as string[] }))
+          const { schemas } = await soon(schemasOf(id!), { schemas: [] as string[], current: '' })
           const s = schemas.find((x) => x.toLowerCase() === q)
-          if (s) for (const o of await objectsOf(id!, s).catch(() => [])) items.push({ ...tableItem(o, null, '0') })
+          if (s) for (const o of await soon(objectsOf(id!, s), [] as DbObject[])) items.push({ ...tableItem(o, null, '0') })
           else await columnItems({ schema: null, name: unquote(qual), alias: null }, '0')
         }
-        return { suggestions: items }
+        // incomplete: Monaco asks again on the next keystroke (the metadata may have arrived by then)
+        return { suggestions: items, incomplete: partial }
       }
 
       if (ready && current) {
-        const objs = await objectsOf(id!, current).catch(() => [] as DbObject[])
+        const objs = await soon(objectsOf(id!, current), [] as DbObject[])
         if (tableCtx) {
           for (const o of objs) items.push(tableItem(o, null, '0'))
-          const { schemas } = await schemasOf(id!).catch(() => ({ schemas: [] as string[] }))
+          const { schemas } = await soon(schemasOf(id!), { schemas: [] as string[], current: '' })
           for (const s of schemas)
             if (s !== current) items.push({ label: s, kind: K.Module, insertText: sqlName(kind, s), detail: '스키마', sortText: '1' + s, range })
-          return { suggestions: items }
+          return { suggestions: items, incomplete: partial }
         }
         for (const ref of tableRefs(stmt)) await columnItems(ref, '0')
         for (const o of objs) items.push(tableItem(o, null, '1'))
       }
       for (const k of [...KEYWORDS, ...(DIALECT[kind] ?? [])])
         items.push({ label: kw(k), kind: K.Keyword, insertText: kw(k), sortText: '2' + k.toLowerCase(), range })
-      return { suggestions: items }
+      return { suggestions: items, incomplete: partial }
     }
   })
 }

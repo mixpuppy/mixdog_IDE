@@ -68,6 +68,19 @@ export interface TxState {
   manual: boolean
   /** uncommitted changes exist */
   pending: boolean
+  /** number of data-changing statements waiting for commit / rollback */
+  count: number
+}
+
+/** a statement run in manual commit mode, waiting for commit / rollback */
+export interface PendingStatement {
+  sql: string
+  /** epoch ms */
+  at: number
+  /** rows changed (null: unknown) */
+  affected: number | null
+  /** 'console' = run in a query console · 'grid' = result grid save */
+  from: 'console' | 'grid'
 }
 
 /** one data-changing statement of a grid save: '?' placeholders, values in order */
@@ -315,7 +328,10 @@ async function mysqlSession(c: DbConn, password: string): Promise<Session> {
     bigNumberStrings: true,
     charset: 'utf8mb4',
     connectTimeout: 10000,
-    multipleStatements: false
+    multipleStatements: false,
+    // company networks / firewalls drop idle TCP connections silently: keep them alive
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000
   })
   await new Promise<void>((res, rej) => conn.connect((e: unknown) => (e ? rej(e) : res())))
   const p = conn.promise()
@@ -378,7 +394,7 @@ async function postgresSession(c: DbConn, password: string): Promise<Session> {
   for (const oid of [1082, 1083, 1114, 1184, 1266]) pg.types.setTypeParser(oid, (s: string) => s)
   pg.types.setTypeParser(20, (s: string) => s) // int8: keep precision
   pg.types.setTypeParser(1700, (s: string) => s) // numeric
-  const client = new pg.Client({ host: c.host, port: c.port, user: c.user, password, database: c.database || 'postgres', connectionTimeoutMillis: 10000 })
+  const client = new pg.Client({ host: c.host, port: c.port, user: c.user, password, database: c.database || 'postgres', connectionTimeoutMillis: 10000, keepAlive: true, keepAliveInitialDelayMillis: 10000 })
   await client.connect()
   const all = async (sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> => (await client.query(sql, params)).rows
   const v = (await all('SELECT version() AS v, current_schema() AS s'))[0]
@@ -560,7 +576,8 @@ async function oracleSession(c: DbConn, password: string): Promise<Session> {
     : `${c.host}:${c.port}/${c.database}`
   let conn: any
   try {
-    conn = await oracledb.getConnection({ user: c.user, password, connectString })
+    // expireTime: probe the connection every minute so a silently dropped one is noticed
+    conn = await oracledb.getConnection({ user: c.user, password, connectString, expireTime: 1 })
   } catch (e: any) {
     if (String(e?.message).includes('NJS-138'))
       throw new Error(
@@ -621,10 +638,28 @@ const sessions = new Map<string, Promise<Session>>()
 const queues = new Map<string, Promise<unknown>>()
 /** connections in manual commit mode (kept across reconnects for this run of the IDE) */
 const manual = new Set<string>()
-/** connections with uncommitted changes */
-const pending = new Set<string>()
+/** uncommitted statements per connection (DBeaver's "pending transactions") */
+const pending = new Map<string, PendingStatement[]>()
+const addPending = (id: string, st: PendingStatement): void => {
+  const list = pending.get(id) ?? []
+  list.push({ ...st, sql: st.sql.length > 4000 ? st.sql.slice(0, 4000) + ' …' : st.sql })
+  if (list.length > 500) list.splice(0, list.length - 500)
+  pending.set(id, list)
+}
 
-export const txState = (id: string): TxState => ({ manual: manual.has(id), pending: pending.has(id) })
+export const txState = (id: string): TxState => ({ manual: manual.has(id), pending: pending.has(id), count: pending.get(id)?.length ?? 0 })
+export const pendingStatements = (id: string): PendingStatement[] => pending.get(id) ?? []
+
+/** '?' binds filled in with the values, for showing a grid save as plain SQL */
+function filled(sql: string, params: unknown[]): string {
+  let i = 0
+  return sql.replace(/\?/g, () => {
+    const v = params[i++]
+    if (v === null || v === undefined) return 'NULL'
+    if (typeof v === 'number' || typeof v === 'bigint') return String(v)
+    return "'" + String(v).replace(/'/g, "''") + "'"
+  })
+}
 
 /** statements that make MySQL / Oracle commit on their own */
 const IMPLICIT_COMMIT = /^\s*(create|alter|drop|rename|truncate|grant|revoke|comment)\b/i
@@ -713,7 +748,7 @@ export async function runQuery(id: string, sql: string, opts: { limit?: number; 
           // DDL committed everything so far
           s.endTx()
           pending.delete(id)
-        } else if (!isReadOnly(sql)) pending.add(id)
+        } else if (!isReadOnly(sql)) addPending(id, { sql: sql.trim(), at: Date.now(), affected: out.affected, from: 'console' })
       }
       return out
     })
@@ -789,6 +824,7 @@ export async function saveChanges(id: string, statements: DbStatement[], passwor
   const s = await session(id, password)
   const isManual = manual.has(id)
   let affected = 0
+  const done: PendingStatement[] = []
   await serial(id, async () => {
     if (!s.inTx()) await s.begin()
     if (isManual) await s.exec(SAVEPOINT[c.kind][0], [])
@@ -802,13 +838,14 @@ export async function saveChanges(id: string, statements: DbStatement[], passwor
               : `${n}개 행이 함께 바뀌어 저장을 취소했습니다 (PK 가 유일하지 않음).\n${st.sql}`
           )
         affected += n
+        done.push({ sql: filled(st.sql, st.params), at: Date.now(), affected: n, from: 'grid' })
       }
     } catch (e) {
       if (isManual) await s.exec(SAVEPOINT[c.kind][1], []).catch(() => {})
       else await s.rollback().catch(() => {})
       throw e
     }
-    if (isManual) pending.add(id)
+    if (isManual) for (const d of done) addPending(id, d)
     else await s.commit()
   })
   publish('db.save', { connection: c.name, statements: statements.length, affected, manual: isManual })
@@ -816,6 +853,25 @@ export async function saveChanges(id: string, statements: DbStatement[], passwor
 }
 
 /* ------------------------------------------------------------------ metadata */
+
+/** Metadata queries (tree, completion) give up after a while: a dead connection then reconnects next time. */
+const META_TIMEOUT = 20000
+async function meta<T>(id: string, p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      p,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          void disconnect(id)
+          reject(new Error(`DB 가 ${META_TIMEOUT / 1000}초 동안 응답하지 않아 연결을 끊었습니다. 다시 시도하면 새로 연결합니다.`))
+        }, META_TIMEOUT)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 export async function listSchemas(id: string): Promise<{ schemas: string[]; current: string }> {
   const c = getConnection(id)
@@ -830,13 +886,13 @@ export async function listSchemas(id: string): Promise<{ schemas: string[]; curr
   q.mariadb = q.mysql
   let rows: Record<string, unknown>[]
   try {
-    rows = await serial(id, () => s.rows(q[c.kind], []))
+    rows = await meta(id, serial(id, () => s.rows(q[c.kind], [])))
   } catch (e) {
     // Oracle 11g has no ORACLE_MAINTAINED column: schemas that own tables or views
     if (c.kind !== 'oracle') throw e
-    rows = await serial(id, () =>
+    rows = await meta(id, serial(id, () =>
       s.rows(`SELECT DISTINCT owner AS N FROM all_objects WHERE object_type IN ('TABLE','VIEW') AND owner NOT IN ('SYS','SYSTEM','XDB','MDSYS','CTXSYS','OUTLN','DBSNMP','APEX_040000','FLOWS_FILES','ANONYMOUS','APPQOSSYS','ORDSYS','ORDDATA','WMSYS','EXFSYS','OLAPSYS') ORDER BY 1`, [])
-    )
+    ))
   }
   const schemas = rows.map((r) => String(r.n ?? r.N))
   if (s.current && !schemas.includes(s.current)) schemas.unshift(s.current)
@@ -854,7 +910,7 @@ export async function listObjects(id: string, schema: string): Promise<DbObject[
     oracle: `SELECT o.object_name AS N, o.object_type AS T, c.comments AS C FROM all_objects o LEFT JOIN all_tab_comments c ON c.owner = o.owner AND c.table_name = o.object_name WHERE o.owner = :1 AND o.object_type IN ('TABLE','VIEW') ORDER BY 1`
   }
   q.mariadb = q.mysql
-  const rows = await serial(id, () => s.rows(q[c.kind], [schema]))
+  const rows = await meta(id, serial(id, () => s.rows(q[c.kind], [schema])))
   return rows.map((r) => ({
     name: String(r.n ?? r.N),
     type: /view/i.test(String(r.t ?? r.T)) ? 'view' : 'table',
@@ -888,7 +944,7 @@ export async function listColumns(id: string, schema: string, table: string): Pr
       WHERE c.owner = :1 AND c.table_name = :2 ORDER BY c.column_id`
   }
   q.mariadb = q.mysql
-  const rows = await serial(id, () => s.rows(q[c.kind], [schema, table]))
+  const rows = await meta(id, serial(id, () => s.rows(q[c.kind], [schema, table])))
   return rows.map((r) => ({
     name: String(r.n ?? r.N),
     type: String(r.t ?? r.T ?? ''),
