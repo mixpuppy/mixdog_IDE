@@ -119,6 +119,15 @@ LSP 없이 텍스트 규칙으로 찾습니다 (Spring + MyBatis 기준, 백그�
 
 IDE 가 관리하는 도구는 `%USERPROFILE%\.mixdog\{jdks,maven,tomcat}` 에 설치됩니다 (시스템 JAVA_HOME 은 그대로).
 
+## GitLab 머지 리퀘스트 (IDE 안에서)
+
+브랜치 팝업(Ctrl+Shift+백틱 또는 타이틀바 브랜치 클릭)에서 **MR 만들기 (GitLab)…** → IDE 안의 작성 창에서 바로 등록합니다 (브라우저 없이).
+
+- 처음 한 번 **GitLab 개인 액세스 토큰**(`api` 권한)을 등록합니다. GitLab → 프로필 → Preferences → Access Tokens (창의 "토큰 만들기 화면 열기" 링크). 토큰은 GitLab 주소별로 Windows 계정 암호화(DPAPI)로 `%APPDATA%\mixdog-ide\gitlab.json` 에 저장됩니다. Git push/pull 로그인과는 별개입니다.
+- From(현재 브랜치의 원격 브랜치) → Into(기본 `develop`), 제목·설명은 마지막 커밋 메시지(첫 줄 / 나머지 줄)로 채워짐, Assignee(나에게 할당)·Reviewer 검색, Draft, 병합 후 소스 브랜치 삭제, squash.
+- 브랜치가 원격에 없거나 안 올린 커밋이 있으면 창에서 바로 Push. 같은 브랜치의 열린 MR 이 있으면 알려 주고 [열기]. 만든 뒤에는 MR 번호와 링크.
+- GitLab API 는 Windows 인증서 저장소를 쓰는 Electron 네트워크로 호출합니다 (사내 GitLab 인증서 그대로). [브라우저에서 작성] 으로 예전처럼 웹에서 만들 수도 있습니다.
+
 ## 오류 창
 
 - Git 작업(Pull·Push·Fetch·체크아웃·병합 등)이 실패하면 오른쪽 아래 알림 대신 **오류 창**이 열립니다: 무슨 일인지 쉬운 설명, 걸린 파일 목록, 해결 방법, 바로 고치는 버튼, 원래 메시지 전체(복사 가능).

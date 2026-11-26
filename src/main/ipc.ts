@@ -8,6 +8,7 @@ import { buildProject, startRun, stopAll, runGoals, updateDependencies, listGrad
 import { getProblems } from './tools/problems'
 import { findDefinition } from './tools/navigate'
 import * as Dbg from './debug/session'
+import * as GL from './tools/gitlab'
 import * as G from './tools/git'
 import * as S from './tools/search'
 import { listTomcats, downloadTomcat, tomcatState, inspectTomcat, findDeployable, keepOnQuit } from './tools/tomcat'
@@ -160,6 +161,12 @@ handle('git:checkout', async (p: string, target: string) => G.checkout(p, target
 handle('git:createBranch', async (p: string, name: string, start: string | null, co: boolean) => G.createBranch(p, name, start, co))
 handle('git:recent', async (p: string) => G.recentBranches(p))
 handle('git:renameBranch', async (p: string, from: string, to: string) => G.renameBranch(p, from, to))
+// GitLab merge requests: errors go back to the form (no toast)
+dbHandle('gitlab:info', async (p: string, branch: string, target: string | null) => GL.mrInfo(p, branch, target))
+dbHandle('gitlab:setToken', async (host: string, token: string) => GL.setToken(host, token))
+dbHandle('gitlab:forgetToken', async (host: string) => GL.forgetToken(host))
+dbHandle('gitlab:users', async (host: string, projectId: number, search: string) => GL.searchUsers(host, projectId, search))
+dbHandle('gitlab:createMr', async (p: string, req: GL.MrCreate) => GL.createMr(p, req))
 handle('git:openMr', async (p: string, branch: string, target: string | null) => G.openMergeRequest(p, branch, target))
 handle('git:deleteBranch', async (p: string, name: string, force: boolean) => G.deleteBranch(p, name, force))
 handle('git:merge', async (p: string, name: string) => G.merge(p, name))

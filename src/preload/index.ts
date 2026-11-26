@@ -124,6 +124,14 @@ const api = {
     children: (project: string, ref: string) => invoke<Obj[]>('debug:children', project, ref),
     threadFrames: (project: string, thread: string) => invoke<Obj[]>('debug:threadFrames', project, thread)
   },
+  /** GitLab merge requests (personal access token, per host) */
+  gitlab: {
+    info: (p: string, branch: string, target: string | null) => dbInvoke<Obj>('gitlab:info', p, branch, target),
+    setToken: (host: string, token: string) => dbInvoke<Obj>('gitlab:setToken', host, token),
+    forgetToken: (host: string) => dbInvoke('gitlab:forgetToken', host),
+    users: (host: string, projectId: number, search: string) => dbInvoke<Obj[]>('gitlab:users', host, projectId, search),
+    createMr: (p: string, req: unknown) => dbInvoke<{ iid: number; url: string }>('gitlab:createMr', p, req)
+  },
   /** Ctrl+click / F12: declarations of the symbol at an offset (text rules, no language server) */
   nav: {
     definition: (project: string, path: string, text: string, offset: number) =>

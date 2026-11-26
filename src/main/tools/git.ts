@@ -78,7 +78,7 @@ export async function repoRoot(projectPath: string): Promise<string | null> {
   return root
 }
 
-async function needRoot(projectPath: string): Promise<string> {
+export async function needRoot(projectPath: string): Promise<string> {
   const r = await repoRoot(projectPath)
   if (!r) throw new GitError('Git 저장소가 아닙니다')
   return r
@@ -539,7 +539,7 @@ export async function renameBranch(projectPath: string, from: string, to: string
 }
 
 /** Browser page of a remote repository (https), from an https or ssh remote URL. */
-function webUrl(remoteUrl: string): string | null {
+export function webUrl(remoteUrl: string): string | null {
   let u = remoteUrl.trim().replace(/\.git$/, '')
   const ssh = u.match(/^(?:ssh:\/\/)?[^@/]+@([^:/]+)(?::\d+)?[:/](.+)$/)
   if (ssh && !/^https?:/.test(u)) u = `https://${ssh[1]}/${ssh[2]}`

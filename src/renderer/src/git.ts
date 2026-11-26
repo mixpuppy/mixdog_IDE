@@ -606,13 +606,10 @@ export async function renameBranch(name: string): Promise<void> {
 }
 
 /** Open the GitLab "new merge request" page for a pushed branch. */
+/** MR form inside the IDE (GitLab API); the form also has "브라우저에서 작성" */
 export async function openMergeRequest(branch: string, target: string | null = null): Promise<void> {
-  try {
-    await window.api.git.openMr(P(), branch, target)
-    toast('브라우저에서 MR 작성 화면을 열었습니다', 'ok')
-  } catch {
-    /* error toast comes from the main process */
-  }
+  const { openMergeRequestForm } = await import('./mr')
+  openMergeRequestForm(branch, target)
 }
 
 /** Show the graph limited to HEAD vs `name` (Sourcetree "현재 브랜치" + compare). */
