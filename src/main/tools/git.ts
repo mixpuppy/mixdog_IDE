@@ -448,7 +448,15 @@ export async function fileAt(projectPath: string, rev: string, path: string): Pr
 
 export async function stage(projectPath: string, paths: string[], source = 'user'): Promise<void> {
   const root = await needRoot(projectPath)
-  await git(root, ['add', '-A', '--', ...paths])
+  try {
+    await git(root, ['add', '-A', '--', ...paths])
+  } catch (e) {
+    // A file already tracked inside a folder that .gitignore excludes (added once with -f):
+    // `add -A` stages it but still exits 1 with "paths are ignored". `add -u` stages tracked
+    // files without that check, so the stage itself succeeds.
+    if (!/ignored by one of your \.gitignore files/i.test(String((e as Error)?.message ?? e))) throw e
+    await git(root, ['add', '-u', '--', ...paths])
+  }
   publish('git.stage', { paths }, source)
 }
 
